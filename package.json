@@ -1,0 +1,23 @@
+{
+  "name": "navigationstisch",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Offline-GM-Konsole für die 2D-Orbitalkarte von Prototyp 2.0.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node build-copy.mjs",
+    "preview": "vite preview",
+    "test:orbit": "node --test src/lib/date.test.mjs src/lib/marker.test.mjs src/lib/orbit.test.mjs src/lib/storage.test.mjs src/lib/tree.test.mjs",
+    "fetch:bodies": "node scripts/fetch-bodies.mjs",
+    "build:seed": "node scripts/build-seed.mjs"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.0.7",
+    "vite-plugin-singlefile": "^2.1.0"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  }
+}
