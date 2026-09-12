@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { activeBody, activeMission, activeRoute, activeSector, markViewDirty, selectBody, selectMission, state, view } from "../lib/state.js";
+import { activeBody, activeMission, activeRoute, activeSector, clearActiveBody, markViewDirty, selectBody, selectMission, state, view } from "../lib/state.js";
 import { BELTS, RING_SYSTEMS } from "../lib/seed.js";
 import { auDistanceLabel, distanceLabel, hohmannTransferPlan, hohmannTransferPoints, orbitTrack, positionsFor } from "../lib/orbit.js";
 import { markerArt } from "../lib/marker.js";
@@ -56,7 +56,7 @@ const zoom = computed({ get: () => state.camera.zoom ?? 1, set: (value) => { sta
 const panX = computed({ get: () => state.camera.panX ?? 0, set: (value) => { state.camera.panX = value; markViewDirty(); } });
 const panY = computed({ get: () => state.camera.panY ?? 0, set: (value) => { state.camera.panY = value; markViewDirty(); } });
 const isPanning = ref(false);
-let lastPointer = null, pressOrigin = null, captured = false;
+let lastPointer = null, pressOrigin = null, captured = false, panned = false;
 const solved = computed(() => positionsFor(view.value?.bodies ?? [], view.value?.reference_epoch, view.value?.campaign_date));
 const activeMissionIndex = computed(() => (view.value?.missions ?? []).findIndex((mission) => mission.id === activeMission.value?.id));
 const missionWindow = computed(() => {
@@ -487,12 +487,26 @@ function activateLabel(label) {
   const needed = (CLUSTER_RADIUS + 8) / Math.max(.4, label.spread);
   setZoom(zoom.value * Math.min(25, Math.max(2.5, needed)), { x: label.x, y: label.y });
 }
+/* Der Klick ins Leere raeumt die Infobox weg. Was auf einem Marker, einer
+ * Beschriftung oder einem Guertel landet, waehlt ihn statt dessen aus — sie
+ * alle tragen role="button". Ein Klick nach dem Ziehen zaehlt nicht: er ist
+ * das Ende einer Kameraffahrt und keine Auswahl. */
+function onVoidClick(event) {
+  if (!props.selectable) return;
+  if (panned) {
+    panned = false;
+    return;
+  }
+  if (event.target.closest?.('[role="button"]')) return;
+  clearActiveBody();
+}
 function startPan(event) {
   if (!props.interactive || event.button !== 0) return;
   event.preventDefault();
   globalThis.getSelection?.().removeAllRanges();
   isPanning.value = true;
   captured = false;
+  panned = false;
   lastPointer = { x: event.clientX, y: event.clientY };
   pressOrigin = lastPointer;
 }
@@ -506,6 +520,7 @@ function movePointer(event) {
     if (!manualFrame.value) manualFrame.value = { focus: { ...frame.value.focus }, scale: frame.value.scale };
     event.currentTarget.setPointerCapture(event.pointerId);
     captured = true;
+    panned = true;
   }
   const box = event.currentTarget.getBoundingClientRect();
   panX.value += (event.clientX - lastPointer.x) / box.width * W;
@@ -538,7 +553,7 @@ function stopPan(event) {
         <span>+ MISSION</span>
       </aside>
     </div>
-    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="2D-Karte des Sonnensystems" draggable="false" @mousedown.prevent @dragstart.prevent @selectstart.prevent @wheel.prevent="onWheel" @pointerdown="startPan" @pointermove="movePointer" @pointerup="stopPan" @pointercancel="stopPan" @lostpointercapture="stopPan">
+    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="2D-Karte des Sonnensystems" draggable="false" @mousedown.prevent @dragstart.prevent @selectstart.prevent @wheel.prevent="onWheel" @pointerdown="startPan" @pointermove="movePointer" @pointerup="stopPan" @pointercancel="stopPan" @lostpointercapture="stopPan" @click="onVoidClick">
       <defs>
         <pattern id="minorGrid" :x="gridOriginX" :y="gridOriginY" :width="gridSize" :height="gridSize" patternUnits="userSpaceOnUse"><path class="minor-grid-line" :d="`M${gridSize} 0H0V${gridSize}`" /></pattern>
         <pattern id="majorGrid" :x="majorGridOriginX" :y="majorGridOriginY" :width="majorGridSize" :height="majorGridSize" patternUnits="userSpaceOnUse"><path class="major-grid-line" :d="`M${majorGridSize} 0H0V${majorGridSize}`" /></pattern>

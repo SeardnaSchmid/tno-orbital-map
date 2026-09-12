@@ -134,6 +134,13 @@ export function selectBody(id) {
   state.activeBodyId = id;
   markViewDirty();
 }
+/* Ein Griff ins Leere hebt die Auswahl auf. Die Infobox haengt an ihr, und
+ * ohne diesen Weg bliebe sie stehen, bis ein anderer Koerper sie ersetzt. */
+export function clearActiveBody() {
+  if (state.activeBodyId === null) return;
+  state.activeBodyId = null;
+  markViewDirty();
+}
 export function focusBody(id) {
   const body = view.value?.bodies.find((item) => item.id === id);
   if (!body || state.draft) return;
