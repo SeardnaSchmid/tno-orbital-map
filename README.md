@@ -80,9 +80,16 @@ zurückgeführt. Die Karte ist eine Spielhilfe, keine Ephemeride.
   Exzentrizität, Umlaufzeit, Anomalie, Inklination und Farbe liegen im Abschnitt
   **Erweiterte Orbitdaten**. Eine Umlaufzeit von `0` macht einen Körper statisch.
 - **Präsentieren** öffnet nach Möglichkeit den Vollbildmodus und wird zur
-  passiven, vergrößerten Spieleransicht: Karte, Dossier, Route und Aufgabe bleiben
-  sichtbar, Navigation und GM-Autorenwerkzeuge sind gesperrt. Der Rückweg zur
-  GM-Konsole muss bestätigt werden.
+  vergrößerten Spieleransicht: Karte, Dossier, Route und Aufgabe bleiben
+  sichtbar, Kamera und GM-Autorenwerkzeuge sind gesperrt. Sichtbare Körper
+  lassen sich weiterhin auswählen und ihr Dossier kann aufgeklappt werden. Der
+  Rückweg zur GM-Konsole muss bestätigt werden.
+- In einer von **HTML as Scene** bereitgestellten Foundry-Ansicht lädt die
+  GM-Konsole ihren Arbeitsstand aus Foundrys Browser-`localStorage`. **Spieler
+  einfrieren** veröffentlicht eine Kopie der aktuellen Auswahl, Kamera, Route
+  und des Missionsdatums am Foundry-Scene-Dokument. Spieler starten automatisch
+  im nicht interaktiven Präsentationsmodus und folgen nur dieser veröffentlichten
+  Kopie; weiteres Erkunden durch den GM verändert ihre Ansicht nicht.
 - Das Menü **Datenverwaltung** importiert und exportiert den ganzen orbitalen
   Stand als JSON. Import wird erst nach einer Zusammenfassung übernommen und
   gespeichert; Zurücksetzen verlangt eine Bestätigung.
@@ -148,10 +155,11 @@ für die Monde. Alle drei ohne Schlüssel.
 ## Entwickeln
 
 ```bash
-npm --prefix tools/navigationstisch run test:orbit
-npm --prefix tools/navigationstisch run build
+npm run test:orbit
+npm run build
 ```
 
-`build` bündelt alles zu [`tools/navigationstisch.html`](../navigationstisch.html).
-Die Datei funktioniert per Doppelklick, ohne Server oder Netz; Änderungen
-gehören nach `src/`, nicht in das Build-Ergebnis.
+`build` bündelt alles nach `dist/index.html` und erzeugt zusätzlich
+`navigationstisch.html` im Repo-Root. Diese Datei funktioniert per Doppelklick,
+ohne Server oder Netz; Änderungen gehören nach `src/`, nicht in die
+Build-Ergebnisse.

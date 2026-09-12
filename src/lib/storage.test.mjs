@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalize } from "./storage.js";
+import { forget, foundryMode, initialPublishedSnapshot, load, normalize, persist, publishSnapshot } from "./storage.js";
 import { bodyDisplayName, bodyPlayerLore, bodyPlayerStats, bodyPlayerTags } from "./presentation.js";
 
 const bodies = [
@@ -119,4 +119,30 @@ test("Gruppenposition und vollstaendige Ansicht werden normalisiert", () => {
 test("eine nicht mehr vorhandene letzte Szene wird verworfen", () => {
   const doc = normalize({ bodies, active_sector: "inneres-system", last_view_id: "fehlt", saved_views: [] });
   assert.equal(doc.last_view_id, null);
+});
+
+test("die Foundry-Brücke liefert Arbeitsstand, Snapshot und Persistenz", async () => {
+  const calls = [];
+  globalThis.htmlAsScene = {
+    mode: "gm",
+    snapshot: { campaign_date: "2030-01-01" },
+    storage: {
+      load: () => ({ bodies, active_sector: "inneres-system", campaign_date: "2029-02-03" }),
+      save: (value) => { calls.push(["save", value.campaign_date]); return Promise.resolve(); },
+      clear: () => { calls.push(["clear"]); return Promise.resolve(); }
+    },
+    publish: (value) => { calls.push(["publish", value.campaign_date]); return Promise.resolve(); }
+  };
+
+  try {
+    assert.equal(foundryMode(), "gm");
+    assert.equal(load().campaign_date, "2029-02-03");
+    assert.equal(initialPublishedSnapshot().campaign_date, "2030-01-01");
+    persist({ campaign_date: "2031-04-05" });
+    forget();
+    await publishSnapshot({ campaign_date: "2032-06-07" });
+    assert.deepEqual(calls, [["save", "2031-04-05"], ["clear"], ["publish", "2032-06-07"]]);
+  } finally {
+    delete globalThis.htmlAsScene;
+  }
 });

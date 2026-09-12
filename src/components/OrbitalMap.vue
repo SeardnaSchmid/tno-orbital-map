@@ -6,7 +6,10 @@ import { auDistanceLabel, distanceLabel, hohmannTransferPlan, hohmannTransferPoi
 import { markerArt } from "../lib/marker.js";
 import { presentBody } from "../lib/presentation.js";
 
-const props = defineProps({ interactive: { type: Boolean, default: true } });
+const props = defineProps({
+  interactive: { type: Boolean, default: true },
+  selectable: { type: Boolean, default: true }
+});
 
 const W = 1840, H = 840, DETAIL_GUTTER = 430;
 const MAP_CENTER_X = (W + DETAIL_GUTTER) / 2;
@@ -341,9 +344,9 @@ function onWheel(event) {
  * Mondsystem, das auf einen Punkt fällt, in mehreren Schritten statt in einem
  * einzigen Sprung, der die Karte unter dem Finger wegzieht. */
 function activateLabel(label) {
-  if (!props.interactive) return;
+  if (!props.selectable) return;
   selectBody(label.id);
-  if (label.count < 2) return;
+  if (!props.interactive || label.count < 2) return;
   const needed = (CLUSTER_RADIUS + 8) / Math.max(.4, label.spread);
   setZoom(zoom.value * Math.min(25, Math.max(2.5, needed)), { x: label.x, y: label.y });
 }
@@ -384,7 +387,7 @@ function stopPan(event) {
 </script>
 
 <template>
-  <section :class="['map-frame', { 'is-panning': isPanning, 'is-readonly': !interactive }]">
+  <section :class="['map-frame', { 'is-panning': isPanning, 'is-viewport-locked': !interactive }]">
     <div class="map-meta map-meta--left"><span>ORB / SOLUTION</span><strong>{{ activeSector.name }}</strong></div>
     <div class="map-meta map-meta--right"><span>GRID {{ distanceLabel(gridStep) }}</span><strong>{{ scaleLabel }} PX/AE</strong></div>
     <div v-if="interactive" class="map-zoom"><button title="Herauszoomen (Rad, mit Umschalt schneller)" aria-label="Herauszoomen" :disabled="zoom <= MIN_ZOOM" @click="zoomBy(.5)">−</button><output :title="`Zoomfaktor auf den eingerahmten Ausschnitt`">{{ zoomLabel }}</output><button title="Hineinzoomen (Rad, mit Umschalt schneller)" aria-label="Hineinzoomen" :disabled="zoom >= zoomCeiling" @click="zoomBy(2)">+</button><button class="map-zoom__auto" :class="{ active: manualFrame }" :title="manualFrame ? 'Manuelle Ansicht lösen und automatisch einpassen' : 'Ansicht automatisch einpassen'" @click="resetViewport">Auto</button></div>
@@ -413,8 +416,8 @@ function stopPan(event) {
         <line v-if="offsetY >= 0 && offsetY <= H" x1="0" :y1="offsetY" :x2="W" :y2="offsetY" />
       </g>
       <g v-for="belt in belts" :key="belt.id" :class="['belt', { 'is-active': belt.active }]" :style="{ '--belt-color': belt.color }"
-         :tabindex="interactive ? 0 : -1" role="button" :aria-disabled="!interactive" :aria-label="`${belt.name}, ${belt.range}`"
-         @click="interactive && selectBody(belt.id)" @keydown.enter="interactive && selectBody(belt.id)">
+         :tabindex="selectable ? 0 : -1" role="button" :aria-disabled="!selectable" :aria-label="`${belt.name}, ${belt.range}`"
+         @click="selectable && selectBody(belt.id)" @keydown.enter="selectable && selectBody(belt.id)">
         <title>{{ belt.name }} · {{ belt.range }}</title>
         <circle class="belt-zone" :cx="belt.x" :cy="belt.y" :r="belt.mid" :stroke-width="belt.width" />
         <circle v-for="(particle, index) in belt.particles" :key="index" class="belt-particle" :cx="particle.x" :cy="particle.y" :r="particle.r" :opacity="particle.opacity" />
@@ -453,7 +456,7 @@ function stopPan(event) {
         </g>
       </g>
       <g v-for="body in markers" :key="body.id" :class="[markerClass(body), { 'is-active': body.active }]"
-         :tabindex="interactive ? 0 : -1" role="button" :aria-disabled="!interactive" :aria-label="body.name" @click="interactive && selectBody(body.id)" @keydown.enter="interactive && selectBody(body.id)">
+         :tabindex="selectable ? 0 : -1" role="button" :aria-disabled="!selectable" :aria-label="body.name" @click="selectable && selectBody(body.id)" @keydown.enter="selectable && selectBody(body.id)">
         <circle v-if="body.art.glow" class="star-glow" :cx="body.x" :cy="body.y" :r="body.art.glow" fill="url(#sunGlow)" />
         <path v-if="body.art.tail" class="comet-tail" :d="body.art.tail" />
         <template v-if="body.art.rings">
@@ -468,7 +471,7 @@ function stopPan(event) {
         <path v-for="(bracket, index) in body.art.brackets" :key="`bracket-${index}`" class="marker-bracket" :d="bracket" />
       </g>
       <g v-for="label in labels" :key="`label-${label.id}`" :class="['label', { 'is-active': label.active, 'label--cluster': label.count > 1 }]"
-         :tabindex="interactive ? 0 : -1" role="button" :aria-disabled="!interactive" :aria-label="label.count > 1 ? `${label.count} Objekte: ${label.title}` : label.name"
+         :tabindex="selectable ? 0 : -1" role="button" :aria-disabled="!selectable" :aria-label="label.count > 1 ? `${label.count} Objekte: ${label.title}` : label.name"
          @click="activateLabel(label)" @keydown.enter="activateLabel(label)">
         <title v-if="label.count > 1">{{ label.title }}</title>
         <circle v-if="label.radius" class="cluster-ring" :cx="label.x" :cy="label.y" :r="label.radius" />
@@ -476,7 +479,7 @@ function stopPan(event) {
         <text class="body-name" :x="label.lx" :y="label.ly - 3" :text-anchor="label.anchor">{{ label.name.toUpperCase() }}</text>
         <text class="body-distance" :x="label.lx" :y="label.ly + 13" :text-anchor="label.anchor">{{ label.sub }}</text>
       </g>
-      <g v-if="groupLocation" class="group-position" role="button" :tabindex="interactive ? 0 : -1" :aria-disabled="!interactive" :aria-label="`${view.group.name} bei ${groupLocation.name}`" @click="interactive && selectBody(groupLocation.id)" @keydown.enter="interactive && selectBody(groupLocation.id)">
+      <g v-if="groupLocation" class="group-position" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`${view.group.name} bei ${groupLocation.name}`" @click="selectable && selectBody(groupLocation.id)" @keydown.enter="selectable && selectBody(groupLocation.id)">
         <circle class="group-position__pulse" :cx="groupLocation.x" :cy="groupLocation.y" r="19" />
         <path :d="`M${groupLocation.x - 15} ${groupLocation.y}h30M${groupLocation.x} ${groupLocation.y - 15}v30`" />
         <text :x="groupLocation.x + 24" :y="groupLocation.y + 34">{{ view.group.name.toUpperCase() }}</text>

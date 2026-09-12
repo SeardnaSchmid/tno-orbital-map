@@ -1,5 +1,5 @@
 import { computed, reactive } from "vue";
-import { clone, forget, load, normalize, persist, uid } from "./storage.js";
+import { clone, forget, foundryMode, load, normalize, persist, publishSnapshot, uid } from "./storage.js";
 import { KERNAUSWAHL, SECTORS } from "./seed.js";
 
 export const state = reactive({
@@ -18,6 +18,8 @@ export const activeSector = computed(() => SECTORS.find((sector) => sector.id ==
  * Verhalten und er zeigt alles, was er hat. */
 const KERN = new Set(KERNAUSWAHL);
 let persistTimer = null;
+const PERSIST_DELAY_MS = foundryMode() ? 1_000 : 180;
+const PUBLISHED_VIEW_ID = "foundry-published";
 
 function announce(message, tone = "ok") {
   state.status = message;
@@ -39,7 +41,7 @@ function schedulePersist(message = "Gespeichert") {
   persistTimer = globalThis.setTimeout(() => {
     persist(state.data);
     persistTimer = null;
-  }, 180);
+  }, PERSIST_DELAY_MS);
   if (message) announce(message);
 }
 
@@ -228,7 +230,7 @@ export function importDocument(doc) {
   adopt(doc, { persistDocument: true });
   announce("Import gespeichert");
 }
-export function reset() { forget(); adopt(load()); announce("Vorgaben geladen"); }
+export function reset() { forget(); adopt(SEED); announce("Vorgaben geladen"); }
 export function addBody() {
   if (!state.draft) openEditor("body");
   const body = {
@@ -300,4 +302,29 @@ export function deleteView(id) {
   if (state.activeViewId === id) { state.activeViewId = null; state.viewDirty = false; }
   persist(state.data);
   announce(`Szene „${record.name}“ gelöscht`);
+}
+
+export function createPublishedSnapshot() {
+  const doc = clone(state.data);
+  const activeView = doc.saved_views.find((record) => record.id === state.activeViewId);
+  const record = {
+    id: PUBLISHED_VIEW_ID,
+    name: activeView?.name || "Spieleransicht",
+    campaign_date: doc.campaign_date,
+    selected_ids: [...state.selectedIds],
+    sector: doc.active_sector,
+    active_body_id: state.activeBodyId,
+    camera: clone(state.camera),
+    group: clone(doc.group)
+  };
+  doc.saved_views = [record];
+  doc.last_view_id = record.id;
+  return normalize(doc);
+}
+
+export async function publishCurrentView() {
+  if (!state.data || state.draft) throw new Error("Schließe zuerst den geöffneten Editor.");
+  flushPersist();
+  await publishSnapshot(createPublishedSnapshot());
+  announce("Spieleransicht eingefroren");
 }

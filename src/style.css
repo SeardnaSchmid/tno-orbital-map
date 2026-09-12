@@ -379,6 +379,9 @@ button { cursor: pointer; }
 .dialog-card p { margin: 14px 0 22px; color: #aebfc1; font-size: 14px; line-height: 1.5; }
 .dialog-card footer, .editor-drawer .dialog-card footer { display: flex; justify-content: flex-end; gap: 8px; padding: 0; border: 0; }
 .editor-confirmation { position: absolute; }
+.published-empty { position: absolute; z-index: 40; inset: 0; display: grid; place-content: center; justify-items: center; padding: 40px; background: rgb(16 27 32 / .97); text-align: center; }
+.published-empty h2 { margin: 10px 0 0; color: #edf4f4; font: 700 30px var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.published-empty p { max-width: 540px; margin: 14px 0 0; color: #91a8ac; font-size: 14px; line-height: 1.5; }
 
 /* Passive projector surface */
 .presentation .hud { height: 94px; padding-top: 14px; padding-bottom: 14px; }
@@ -389,7 +392,7 @@ button { cursor: pointer; }
 .presentation-strip span { color: var(--muted); font: 9px var(--mono); letter-spacing: .13em; }
 .presentation-strip strong { display: block; margin-top: 6px; color: #c9dbdd; font-size: 12px; }
 .presentation .map-frame { top: 174px; height: 840px; }
-.map-frame.is-readonly svg, .map-frame.is-readonly .marker, .map-frame.is-readonly .label, .map-frame.is-readonly .belt, .map-frame.is-readonly .group-position { cursor: default; }
+.map-frame.is-viewport-locked svg { cursor: default; }
 .presentation .map-readout { font-size: 10px; }
 .presentation .body-name { font-size: 12px; }
 .presentation .body-distance { font-size: 10px; }

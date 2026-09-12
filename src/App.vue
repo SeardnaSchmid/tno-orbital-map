@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { activeBody, activeSector, boot, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, reset, saveView, setCampaignDate, setGroupBody, setSector, state, updateView, view } from "./lib/state.js";
-import { normalize } from "./lib/storage.js";
+import { activeBody, activeSector, adopt, boot, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, publishCurrentView, reset, saveView, setCampaignDate, setGroupBody, setSector, state, updateView, view } from "./lib/state.js";
+import { foundryMode, initialPublishedSnapshot, normalize, onPublishedSnapshot } from "./lib/storage.js";
 import { SECTORS } from "./lib/seed.js";
 import { auDistanceLabel, distanceLabel, lightDelayLabel, positionsFor } from "./lib/orbit.js";
 import { addCalendarStep, parseCalendarDate, replaceCalendarPart, todayCalendarDate } from "./lib/date.js";
@@ -19,7 +19,10 @@ const showData = ref(false);
 const scale = ref(1);
 const isPlaying = ref(false);
 const selectedStep = ref("day");
-const presentationMode = ref(false);
+const embeddedMode = foundryMode();
+const foundryPlayer = embeddedMode === "player";
+const presentationMode = ref(foundryPlayer);
+const waitingForPublishedView = ref(foundryPlayer && !initialPublishedSnapshot());
 const dossierOpen = ref(false);
 const newViewName = ref("");
 const dialog = ref(null);
@@ -34,12 +37,18 @@ const STEPS = {
 };
 const fit = () => { scale.value = Math.min(window.innerWidth / 1920, window.innerHeight / 1080); };
 boot();
+const stopFollowingPublishedView = onPublishedSnapshot((snapshot) => {
+  if (!foundryPlayer) return;
+  waitingForPublishedView.value = !snapshot;
+  if (snapshot) adopt(snapshot);
+});
 onMounted(() => { fit(); window.addEventListener("resize", fit); window.addEventListener("keydown", onKeydown); });
 onBeforeUnmount(() => {
   window.removeEventListener("resize", fit);
   window.removeEventListener("keydown", onKeydown);
   stopPlayback();
   flushPersist();
+  stopFollowingPublishedView();
 });
 const customCount = computed(() => (view.value?.bodies ?? []).filter((body) => body.is_custom).length);
 const activeParent = computed(() => (view.value?.bodies ?? []).find((body) => body.id === activeBody.value?.parent_id));
@@ -118,12 +127,23 @@ function exitPresentation() {
   if (document.fullscreenElement) document.exitFullscreen?.();
 }
 function requestExitPresentation() {
+  if (foundryPlayer) return;
   openConfirm({
     title: "Präsentation beenden?",
     message: "Die GM-Werkzeuge und Datenverwaltung werden wieder eingeblendet.",
     confirmLabel: "GM öffnen",
     onConfirm: exitPresentation
   });
+}
+async function freezeForPlayers() {
+  stopPlayback();
+  closeMenus();
+  try {
+    await publishCurrentView();
+  } catch (error) {
+    state.status = `Freigabe fehlgeschlagen: ${error.message}`;
+    state.statusTone = "error";
+  }
 }
 function closeMenus() {
   showPicker.value = false;
@@ -225,10 +245,11 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
         <button class="btn" :aria-expanded="showViews" @click="toggleMenu('views')">Szenen</button>
         <button class="btn" :aria-expanded="showRoute" @click="toggleMenu('route')">Route</button>
         <button class="btn" @click="startEditing">Dossier</button>
-        <button class="btn primary" @click="startPresentation">Präsentieren</button>
+        <button v-if="embeddedMode === 'gm'" class="btn primary" @click="freezeForPlayers">Spieler einfrieren</button>
+        <button class="btn" @click="startPresentation">Präsentieren</button>
         <button class="data-trigger" :aria-expanded="showData" aria-label="Datenverwaltung" @click="toggleMenu('data')">•••</button>
       </div>
-      <div v-else class="hud-tools presentation-tools"><span>SPIELERANSICHT · NUR LESEN</span><button class="btn" @click="requestExitPresentation">GM öffnen</button></div>
+      <div v-else class="hud-tools presentation-tools"><span>SPIELERANSICHT · KAMERA FIX</span><button v-if="!foundryPlayer" class="btn" @click="requestExitPresentation">GM öffnen</button></div>
     </header>
 
     <section v-if="!presentationMode" class="control-strip">
@@ -253,7 +274,7 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
 
     <section v-else class="presentation-strip"><span>MISSIONSDATUM<strong>{{ view.campaign_date }}</strong></span><span>STATUS<strong>{{ groupStatus }}</strong></span><span v-if="routeDistance !== null">ROUTENDISTANZ<strong>{{ auDistanceLabel(routeDistance) }}</strong></span><span v-if="routeDistance !== null">SIGNALLAUFZEIT<strong>{{ lightDelayLabel(routeDistance) }}</strong></span></section>
 
-    <OrbitalMap :interactive="!presentationMode" />
+    <OrbitalMap :interactive="!presentationMode" :selectable="!waitingForPublishedView" />
 
     <aside v-if="activeBody" class="detail-panel" :class="{ expanded: dossierOpen }">
       <header><span class="eyebrow">OBJ / {{ activeBody.id }}</span><button class="dossier-toggle" @click="dossierOpen = !dossierOpen">{{ dossierOpen ? 'KOMPAKT' : 'DOSSIER' }}</button></header>
@@ -294,6 +315,7 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
     </aside>
 
     <div v-if="state.status" class="toast" :class="`toast--${state.statusTone}`" role="status">{{ state.status }}</div>
+    <div v-if="waitingForPublishedView" class="published-empty" role="status"><span class="eyebrow">NAVIGATIONSTISCH</span><h2>Noch keine Ansicht freigegeben</h2><p>Die Spielleitung hat für diese Foundry-Szene noch keinen Kartenstand eingefroren.</p></div>
     <BodyEditor v-if="state.editing" />
 
     <div v-if="dialog" class="dialog-backdrop" @click.self="dialog = null">

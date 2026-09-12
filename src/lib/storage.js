@@ -4,6 +4,7 @@ import { normalizeCalendarDate } from "./date.js";
 export const KEY = "navigationstisch.orbit.v1";
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 export const uid = () => `body-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+const bridge = () => globalThis.htmlAsScene ?? null;
 
 const kinds = new Set(["star", "planet", "dwarf_planet", "moon", "asteroid", "comet", "belt", "custom"]);
 const groupStatuses = new Set(["orbiting", "landed", "in-transit", "unknown"]);
@@ -149,8 +150,34 @@ export function normalize(source) {
 }
 
 export function load() {
+  const foundry = bridge();
+  if (foundry?.mode === "player") return normalize(foundry.snapshot);
+  if (foundry) return normalize(foundry.storage.load());
   try { return normalize(JSON.parse(localStorage.getItem(KEY) || "null")); }
   catch { return clone(SEED); }
 }
-export const persist = (doc) => localStorage.setItem(KEY, JSON.stringify(doc));
-export const forget = () => localStorage.removeItem(KEY);
+export function persist(doc) {
+  const foundry = bridge();
+  if (foundry) {
+    void foundry.storage.save(doc).catch((error) => console.error("Navigationstisch: Foundry-Arbeitsstand konnte nicht gespeichert werden.", error));
+    return;
+  }
+  localStorage.setItem(KEY, JSON.stringify(doc));
+}
+export function forget() {
+  const foundry = bridge();
+  if (foundry) {
+    void foundry.storage.clear().catch((error) => console.error("Navigationstisch: Foundry-Arbeitsstand konnte nicht gelöscht werden.", error));
+    return;
+  }
+  localStorage.removeItem(KEY);
+}
+
+export const foundryMode = () => bridge()?.mode ?? null;
+export const initialPublishedSnapshot = () => bridge()?.snapshot ?? null;
+export const onPublishedSnapshot = (listener) => bridge()?.onSnapshot(listener) ?? (() => {});
+export async function publishSnapshot(snapshot) {
+  const foundry = bridge();
+  if (!foundry) throw new Error("Die Spielerfreigabe ist nur innerhalb von Foundry verfügbar.");
+  await foundry.publish(snapshot);
+}
