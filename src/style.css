@@ -384,14 +384,12 @@ button { cursor: pointer; }
 .published-empty p { max-width: 540px; margin: 14px 0 0; color: #91a8ac; font-size: 14px; line-height: 1.5; }
 
 /* Passive projector surface */
-.presentation .hud { height: 94px; padding-top: 14px; padding-bottom: 14px; }
 .presentation-title { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 18px; }
 .presentation-title strong { color: #dbe8e9; font: 700 16px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
 .presentation-title small { color: var(--amber-hi); font: 11px var(--mono); letter-spacing: .08em; }
-.presentation-strip { position: absolute; z-index: 4; top: 94px; left: 40px; right: 40px; height: 64px; display: flex; align-items: center; justify-content: center; gap: 70px; border: 1px solid var(--line-dim); border-top: 0; background: rgb(20 32 38 / .94); }
+.presentation-strip { position: absolute; z-index: 4; top: 112px; left: 40px; right: 40px; height: 72px; display: flex; align-items: center; justify-content: center; gap: 70px; border: 1px solid var(--line-dim); border-top: 0; background: rgb(20 32 38 / .94); }
 .presentation-strip span { color: var(--muted); font: 9px var(--mono); letter-spacing: .13em; }
 .presentation-strip strong { display: block; margin-top: 6px; color: #c9dbdd; font-size: 12px; }
-.presentation .map-frame { top: 174px; height: 840px; }
 .map-frame.is-viewport-locked svg { cursor: default; }
 .presentation .map-readout { font-size: 10px; }
 .presentation .body-name { font-size: 12px; }

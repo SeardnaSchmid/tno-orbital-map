@@ -81,7 +81,9 @@ zurückgeführt. Die Karte ist eine Spielhilfe, keine Ephemeride.
   **Erweiterte Orbitdaten**. Eine Umlaufzeit von `0` macht einen Körper statisch.
 - **Präsentieren** öffnet nach Möglichkeit den Vollbildmodus und wird zur
   vergrößerten Spieleransicht: Karte, Dossier, Route und Aufgabe bleiben
-  sichtbar, Kamera und GM-Autorenwerkzeuge sind gesperrt. Sichtbare Körper
+  sichtbar, Kamera und GM-Autorenwerkzeuge sind gesperrt. Die Statusleiste
+  behält dieselbe Höhe wie die GM-Steuerleiste, damit der eingefrorene
+  Kartenausschnitt auf beiden Ansichten pixelgleich liegt. Sichtbare Körper
   lassen sich weiterhin auswählen und ihr Dossier kann aufgeklappt werden. Der
   Rückweg zur GM-Konsole muss bestätigt werden.
 - In einer von **HTML as Scene** bereitgestellten Foundry-Ansicht lädt die
