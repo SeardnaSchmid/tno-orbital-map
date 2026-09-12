@@ -208,7 +208,8 @@ button { cursor: pointer; }
 .mission-objective > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 5px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--mission-color, var(--amber)) 30%, transparent); }
 .mission-objective > footer span { min-width: 0; overflow: hidden; color: #9e9177; font: 8px var(--mono); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
 .mission-objective > footer strong { flex: 0 0 auto; color: var(--mission-color, var(--amber-hi)); font: 8px var(--mono); letter-spacing: .08em; }
-.mission-objective--empty { --mission-color: var(--amber); height: 94px; opacity: 1; }
+.mission-objective.mission-objective--empty { --mission-color: var(--amber); display: flex; width: auto; align-self: flex-end; align-items: center; padding: 0 11px; opacity: .82; }
+.mission-objective--empty span { color: var(--amber); font: 8px var(--mono); letter-spacing: .16em; }
 .map-readout, .map-warning { position: absolute; z-index: 4; left: 18px; bottom: 14px; color: #6e8b90; font: 9px var(--mono); letter-spacing: .11em; }
 .map-readout { display: flex; gap: 18px; }
 .map-readout span::before { content: ">"; margin-right: 5px; color: var(--cyan); }

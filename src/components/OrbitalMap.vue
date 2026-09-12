@@ -31,6 +31,9 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
  * keine Arbeitsflaeche — als halbe Karten geben sie der Karte ihren Platz
  * zurueck und sagen trotzdem, worum es geht. */
 const MISSION_CARD_TOP = 58, MISSION_CARD_HEIGHT = 112, MISSION_CARD_HEIGHT_IDLE = 74;
+/* Ohne Mission ist nichts anzuzeigen — dann bleibt nur der Weg zur ersten,
+ * und der braucht keine Karte, sondern eine Schaltflaeche. */
+const MISSION_CARD_HEIGHT_EMPTY = 26;
 const MISSION_CARD_GAP = 8, MISSION_CARD_RIGHT = 18;
 const MISSION_CARD_WIDTH_GM = 390, MISSION_CARD_WIDTH_PLAYER = 450;
 
@@ -531,9 +534,8 @@ function stopPan(event) {
         <p>{{ entry.mission.objective || 'Noch keine Aufgabe eingetragen.' }}</p>
         <footer><span>{{ missionTargetsLabel(entry.mission) }}</span><strong>{{ entry.mission.target_ids.length }} {{ entry.mission.target_ids.length === 1 ? 'ZIEL' : 'ZIELE' }}</strong></footer>
       </aside>
-      <aside v-if="!missionWindow.length" class="mission-objective mission-objective--empty" :class="{ editable: interactive }" :style="{ height: `${MISSION_CARD_HEIGHT_IDLE}px` }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" aria-label="Mission anlegen" @click="openMission(null)" @keydown.enter="openMission(null)">
-        <header><span>MISSIONEN</span><small>0 / 0</small></header>
-        <p>Noch keine Mission angelegt.</p>
+      <aside v-if="!missionWindow.length" class="mission-objective mission-objective--empty" :class="{ editable: interactive }" :style="{ height: `${MISSION_CARD_HEIGHT_EMPTY}px` }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" aria-label="Mission anlegen" @click="openMission(null)" @keydown.enter="openMission(null)">
+        <span>+ MISSION</span>
       </aside>
     </div>
     <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="2D-Karte des Sonnensystems" draggable="false" @mousedown.prevent @dragstart.prevent @selectstart.prevent @wheel.prevent="onWheel" @pointerdown="startPan" @pointermove="movePointer" @pointerup="stopPan" @pointercancel="stopPan" @lostpointercapture="stopPan">
