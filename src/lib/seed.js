@@ -77,6 +77,20 @@ export const KERNAUSWAHL = [
   "quaoar", "sedna", "orcus", "gonggong", "arrokoth"
 ];
 
+/* Was ein Sektor über seinen eigenen Bestand hinaus mitbringt. Weit draußen
+ * verliert ein Ausschnitt sonst seinen Bezugspunkt: ohne Sol stehen die Bahnen
+ * im Nichts und niemand sieht, worum sie laufen. Der Asteroidengürtel bekommt
+ * zusätzlich die inneren Planeten — er ist die Grenze zwischen innen und
+ * außen, und die zeigt sich nur, wenn beide Seiten im Bild stehen.
+ *
+ * Diese Körper gehören einem anderen Sektor und kommen nur als Kontext mit;
+ * welcher Sektor gemeint ist, entscheidet weiter sein eigener Bestand. */
+export const SEKTOR_ZUGABE = {
+  asteroidenguertel: ["sun", "mercury", "venus", "earth", "mars"],
+  "aeusseres-system": ["sun"],
+  kuiper: ["sun"]
+};
+
 export const BODIES = [...CATALOG, ...BELTS];
 
 export const SEED = {

@@ -1,6 +1,6 @@
 import { computed, reactive } from "vue";
 import { clone, forget, foundryMode, load, normalize, persist, publishSnapshot, uid } from "./storage.js";
-import { KERNAUSWAHL, SECTORS } from "./seed.js";
+import { KERNAUSWAHL, SEKTOR_ZUGABE, SECTORS } from "./seed.js";
 
 export const state = reactive({
   data: null, draft: null, activeBodyId: "sun", selectedIds: new Set(),
@@ -57,7 +57,11 @@ export function flushPersist() {
 function defaultSelection(doc, sectorId = doc.active_sector) {
   const imSektor = doc.bodies.filter((body) => body.sector === sectorId);
   const kern = imSektor.filter((body) => KERN.has(body.id) || body.is_custom);
-  return (kern.length ? kern : imSektor).map((body) => body.id);
+  const basis = (kern.length ? kern : imSektor).map((body) => body.id);
+  /* Die Zugabe liegt außerhalb des Sektors und wird darum gegen den Bestand
+   * geprüft: ein eigenes Dokument kann sie gelöscht haben. */
+  const vorhanden = new Set(doc.bodies.map((body) => body.id));
+  return [...new Set([...basis, ...(SEKTOR_ZUGABE[sectorId] ?? []).filter((id) => vorhanden.has(id))])];
 }
 
 function setSectorContext(id) {
@@ -65,9 +69,14 @@ function setSectorContext(id) {
   state.data.active_sector = sector.id;
   state.camera = { ...clone(sector.camera), zoom: 1, panX: 0, panY: 0 };
   state.selectedIds = new Set(defaultSelection(state.data, sector.id));
-  state.activeBodyId = state.selectedIds.has(sector.camera.focus)
+  /* Der Kamerafokus ist nicht immer das Thema: Sol steht über Gürtel und
+   * Außenbahnen als Bezugspunkt mit, gemeint ist dort aber der Sektor selbst.
+   * Aktiv wird darum nur, was ihm auch gehört. */
+  const eigene = [...state.selectedIds].filter((bodyId) =>
+    state.data.bodies.find((body) => body.id === bodyId)?.sector === sector.id);
+  state.activeBodyId = eigene.includes(sector.camera.focus)
     ? sector.camera.focus
-    : [...state.selectedIds].find((bodyId) => bodyId !== "sun") ?? "sun";
+    : eigene.find((bodyId) => bodyId !== "sun") ?? sector.camera.focus;
 }
 
 function applyView(record, shouldPersist = true) {
