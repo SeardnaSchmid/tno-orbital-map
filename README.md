@@ -52,8 +52,8 @@ zurückgeführt. Die Karte ist eine Spielhilfe, keine Ephemeride.
   Sichtbarkeit, Szenenspeicherung und Dossier funktionieren wie bei Körpern.
   Als Standort oder Ziel stehen Gürtel nicht zur Wahl, weil sie keinen
   eindeutigen Navigationspunkt bezeichnen.
-- **Szenen** speichert Datum, Auswahl, fokussierten Körper, Gruppenposition und
-  den exakten Kartenausschnitt unter einem Namen. Die zuletzt geladene Szene
+- **Szenen** speichert Datum, Auswahl, fokussierten Körper, Route, Missionen und den
+  exakten Kartenausschnitt unter einem Namen. Die zuletzt geladene Szene
   ist die Startansicht; geänderte Szenen können in derselben Zeile aktualisiert
   werden.
 - Das Datum hat getrennte Felder für Tag, Monat und ein bis zu sechsstelliges
@@ -65,38 +65,36 @@ zurückgeführt. Die Karte ist eine Spielhilfe, keine Ephemeride.
   für jeden Körper, ohne die astronomischen Seed-Daten zu verändern. Dossier
   und Körperdaten liegen in getrennten Editor-Reitern; ungespeicherte Änderungen
   werden beim Schließen nicht still verworfen.
-- **Route** pflegt Gruppenname, aktuelle Aufgabe, Standort, Ziel und Status unabhängig vom
-  Körpereditor und zeigt bei gesetztem Standort und Ziel ihre aktuelle Distanz
-  in AE. Der aktive Körper kann außerdem direkt im Dossier als Standort
-  oder Ziel gesetzt werden. Die Entfernung steht direkt auf der Verbindungslinie.
-  Bei zwei Körpern mit demselben Primärkörper ergänzt die Karte eine vereinfachte
-  Hohmann-Transferbahn mit nächstem Startfenster, Flugzeit, Ankunft und Δv. Die
-  Transferbahn lässt sich im Routenfenster ausblenden; ihre Zeitachse markiert
-  Heute und das Startfenster, gliedert den Zyklus und zeigt Resttage sowie
-  Fortschritt bis zum nächsten Startzeitpunkt. Die aktuelle Aufgabe erscheint als
-  eigenes Infofeld über der Karte.
+- **Route** ist ein eigener, von Missionen unabhängiger Start-Ziel-Pfad. Die
+  Spielleitung wählt **Direkt** für die momentane geradlinige Entfernung oder
+  **Hohmann** für eine treibstoffeffiziente Zweimpuls-Transferbahn. Der
+  Hohmann-Modus zeigt nächstes Startfenster, Flugzeit, Ankunft und Δv; er ist nur
+  für berechenbare Bahnen um denselben Primärkörper verfügbar. Start und Ziel
+  lassen sich im Dossier setzen. **Route zurücksetzen** entfernt beide Punkte
+  gemeinsam.
+- **Missionen** verwaltet höchstens drei Aufgaben. Jede Mission besteht aus
+  ihrem Aufgabentext und optionalen Zielkörpern; eine neue Mission beginnt ohne
+  Ziel und enthält weder Start noch Berechnungsart. Rechts oben stehen alle drei
+  Missionen untereinander;
+  farblich passende Linien verbinden jede Karte mit ihren sichtbaren
+  Zielkörpern. Ein Klick öffnet die jeweilige Mission. Frühere Einzelrouten
+  werden beim Laden automatisch in die unabhängige Route und ein Missionsziel
+  aufgeteilt; ihre alte Gruppenbezeichnung und ihr Status entfallen.
 - Eigene Körper brauchen zunächst nur Name, Art, Primärkörper, Distanz und
   Sektor. Ihr visuelles Erscheinungsbild steht direkt im einfachen Formular;
   Exzentrizität, Umlaufzeit, Anomalie, Inklination und Farbe liegen im Abschnitt
   **Erweiterte Orbitdaten**. Eine Umlaufzeit von `0` macht einen Körper statisch.
-- **Präsentieren** öffnet nach Möglichkeit den Vollbildmodus und wird zur
-  vergrößerten Spieleransicht: Karte, Dossier, Route und Aufgabe bleiben
-  sichtbar, Kamera und GM-Autorenwerkzeuge sind gesperrt. Die Statusleiste
-  behält dieselbe Höhe wie die GM-Steuerleiste, damit der eingefrorene
-  Kartenausschnitt auf beiden Ansichten pixelgleich liegt. Sichtbare Körper
-  lassen sich weiterhin auswählen und ihr Dossier kann aufgeklappt werden. Der
-  Rückweg zur GM-Konsole muss bestätigt werden.
 - In einer von **HTML as Scene** bereitgestellten Foundry-Ansicht lädt die
   GM-Konsole ihren Arbeitsstand aus Foundrys Browser-`localStorage`. **Spieler
-  einfrieren** veröffentlicht eine Kopie der aktuellen Auswahl, Kamera, Route
+  einfrieren** veröffentlicht eine Kopie der aktuellen Auswahl, Kamera, Route, Missionen
   und des Missionsdatums am Foundry-Scene-Dokument. Spieler starten automatisch
-  im nicht interaktiven Präsentationsmodus und folgen nur dieser veröffentlichten
+  in der reduzierten Spieleransicht und folgen nur dieser veröffentlichten
   Kopie; weiteres Erkunden durch den GM verändert ihre Ansicht nicht.
 - Das Menü **Datenverwaltung** importiert und exportiert den ganzen orbitalen
   Stand als JSON. Import wird erst nach einer Zusammenfassung übernommen und
   gespeichert; Zurücksetzen verlangt eine Bestätigung.
 
-Der Browser speichert Kampagnendatum, Sektor, Dossiers, Route, aktuelle Aufgabe, eigene Körper und
+Der Browser speichert Kampagnendatum, Sektor, Dossiers, Route, Missionen, eigene Körper und
 Szenen unter `navigationstisch.orbit.v1`. Auswahl und Kamera werden dauerhaft,
 wenn sie als Szene gespeichert oder in der aktiven Szene aktualisiert werden.
 Der Vorgänger-Schlüssel `navigationstisch.v1` wird bewusst nicht angetastet.

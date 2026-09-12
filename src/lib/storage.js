@@ -3,11 +3,11 @@ import { normalizeCalendarDate } from "./date.js";
 
 export const KEY = "navigationstisch.orbit.v1";
 export const clone = (value) => JSON.parse(JSON.stringify(value));
-export const uid = () => `body-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+export const uid = (prefix = "body") => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 const bridge = () => globalThis.htmlAsScene ?? null;
 
 const kinds = new Set(["star", "planet", "dwarf_planet", "moon", "asteroid", "comet", "belt", "custom"]);
-const groupStatuses = new Set(["orbiting", "landed", "in-transit", "unknown"]);
+const routeCalculations = new Set(["direct", "hohmann"]);
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const date = normalizeCalendarDate;
 const text = (value, fallback = "") => typeof value === "string" ? value : fallback;
@@ -28,18 +28,50 @@ function bodyId(value, ids) {
   return id && ids.has(id) ? id : null;
 }
 
-function normalizeGroup(value, ids) {
-  const group = value && typeof value === "object" ? value : {};
-  const location = bodyId(group.location_body_id, ids);
-  const destination = bodyId(group.destination_body_id, ids);
+function normalizeMission(value, ids, index = 0) {
+  const mission = value && typeof value === "object" ? value : {};
+  const targets = Array.isArray(mission.target_ids)
+    ? mission.target_ids.map((id) => bodyId(id, ids)).filter(Boolean)
+    : [bodyId(mission.destination_body_id, ids)].filter(Boolean);
   return {
-    name: text(group.name, "GRUPPE").trim() || "GRUPPE",
-    objective: text(group.objective).trim(),
-    show_transfer: typeof group.show_transfer === "boolean" ? group.show_transfer : true,
-    location_body_id: location,
-    destination_body_id: destination === location ? null : destination,
-    status: groupStatuses.has(group.status) ? group.status : "unknown"
+    id: text(mission.id).trim() || `mission-${index + 1}`,
+    objective: text(mission.objective).trim(),
+    target_ids: [...new Set(targets)]
   };
+}
+
+function normalizeRoute(value, ids) {
+  const route = value && typeof value === "object" ? value : {};
+  const source = bodyId(route.source_body_id ?? route.location_body_id, ids);
+  const destination = bodyId(route.destination_body_id, ids);
+  const legacyCalculation = route.show_transfer === true ? "hohmann" : "direct";
+  return {
+    source_body_id: source,
+    destination_body_id: destination === source ? null : destination,
+    calculation: routeCalculations.has(route.calculation) ? route.calculation : legacyCalculation
+  };
+}
+
+function legacyRouteFromMissions(missions, activeId) {
+  if (!Array.isArray(missions)) return null;
+  const activeMissions = missions.slice(0, 3);
+  return activeMissions.find((mission) => String(mission?.id) === String(activeId)) ?? activeMissions[0] ?? null;
+}
+
+function normalizeMissions(value, ids, legacyGroup = null) {
+  const source = Array.isArray(value) ? value : legacyGroup && typeof legacyGroup === "object" ? [legacyGroup] : [];
+  const used = new Set();
+  return source.map((mission, index) => {
+    const normalized = normalizeMission(mission, ids, index);
+    if (used.has(normalized.id)) {
+      const base = `mission-${index + 1}`;
+      normalized.id = base;
+      let suffix = 2;
+      while (used.has(normalized.id)) normalized.id = `${base}-${suffix++}`;
+    }
+    used.add(normalized.id);
+    return normalized;
+  }).slice(0, 3);
 }
 
 function normalizeCamera(value, sector, ids) {
@@ -61,7 +93,7 @@ export function normalize(source) {
     lore: text(body?.lore), stats: stats(body?.stats)
   }]));
   const seedBodies = new Map(SEED.bodies.map((body) => [body.id, body]));
-  doc.version = 4;
+  doc.version = 6;
   doc.reference_epoch = date(doc.reference_epoch, SEED.reference_epoch);
   doc.campaign_date = date(doc.campaign_date, SEED.campaign_date);
   doc.active_sector = SECTORS.some((sector) => sector.id === doc.active_sector)
@@ -131,9 +163,20 @@ export function normalize(source) {
     }
   }
   const routeIds = new Set(doc.bodies.filter((body) => body.kind !== "belt").map((body) => body.id));
-  doc.group = normalizeGroup(doc.group, routeIds);
+  const sourceMissions = doc.missions;
+  const sourceRoute = doc.route ?? legacyRouteFromMissions(sourceMissions, doc.active_mission_id) ?? doc.group;
+  doc.missions = normalizeMissions(doc.missions, routeIds, doc.group);
+  doc.route = normalizeRoute(sourceRoute, routeIds);
+  const activeMissionId = doc.active_mission_id == null ? null : String(doc.active_mission_id);
+  doc.active_mission_id = doc.missions.some((mission) => mission.id === activeMissionId)
+    ? activeMissionId : doc.missions[0]?.id ?? null;
+  delete doc.group;
   doc.saved_views = Array.isArray(doc.saved_views) ? doc.saved_views.map((view, index) => {
     const sector = SECTORS.some((item) => item.id === view?.sector) ? view.sector : doc.active_sector;
+    const ownsMissionState = Array.isArray(view?.missions) || !!(view?.group && typeof view.group === "object");
+    const missions = normalizeMissions(view?.missions, routeIds, view?.group ?? null);
+    const requestedMissionId = view?.active_mission_id == null ? null : String(view.active_mission_id);
+    const route = normalizeRoute(view?.route ?? legacyRouteFromMissions(view?.missions, requestedMissionId) ?? view?.group ?? doc.route, routeIds);
     return {
       id: String(view?.id || `view-${index}`), name: String(view?.name || "Unbenannte Ansicht"),
       campaign_date: date(view?.campaign_date, doc.campaign_date),
@@ -141,7 +184,11 @@ export function normalize(source) {
       sector,
       active_body_id: bodyId(view?.active_body_id, ids),
       camera: normalizeCamera(view?.camera, sector, ids),
-      group: normalizeGroup(view?.group ?? doc.group, routeIds)
+      route,
+      missions: ownsMissionState ? missions : clone(doc.missions),
+      active_mission_id: ownsMissionState
+        ? missions.some((mission) => mission.id === requestedMissionId) ? requestedMissionId : missions[0]?.id ?? null
+        : doc.active_mission_id
     };
   }) : [];
   const lastViewId = doc.last_view_id == null ? null : String(doc.last_view_id);

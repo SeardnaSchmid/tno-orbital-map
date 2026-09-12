@@ -80,12 +80,14 @@ export const KERNAUSWAHL = [
 export const BODIES = [...CATALOG, ...BELTS];
 
 export const SEED = {
-  version: 4,
+  version: 6,
   reference_epoch: "2000-01-01",
   campaign_date: "2026-09-09",
   bodies: BODIES,
   body_overrides: {},
-  group: { name: "GRUPPE", objective: "", show_transfer: true, location_body_id: null, destination_body_id: null, status: "unknown" },
+  route: { source_body_id: null, destination_body_id: null, calculation: "direct" },
+  missions: [],
+  active_mission_id: null,
   saved_views: [],
   active_sector: "inneres-system"
 };

@@ -11,6 +11,8 @@ export const state = reactive({
 export const view = computed(() => state.draft || state.data);
 export const activeBody = computed(() => view.value?.bodies.find((body) => body.id === state.activeBodyId) ?? null);
 export const activeSector = computed(() => SECTORS.find((sector) => sector.id === view.value?.active_sector) ?? SECTORS[0]);
+export const activeMission = computed(() => view.value?.missions?.find((mission) => mission.id === view.value.active_mission_id) ?? null);
+export const activeRoute = computed(() => view.value?.route ?? null);
 
 /* Ein Sektor bringt den Kern seines Bestands mit, nicht seinen ganzen. Wer
  * einen eigenen Körper anlegt, will ihn sofort sehen — is_custom zählt darum
@@ -72,7 +74,9 @@ function applyView(record, shouldPersist = true) {
   if (!record || !state.data) return false;
   state.data.campaign_date = record.campaign_date;
   state.data.active_sector = record.sector;
-  state.data.group = clone(record.group);
+  state.data.route = clone(record.route);
+  state.data.missions = clone(record.missions);
+  state.data.active_mission_id = record.active_mission_id;
   state.data.last_view_id = record.id;
   state.selectedIds = new Set(record.selected_ids);
   state.camera = clone(record.camera);
@@ -93,12 +97,12 @@ export function adopt(doc, { persistDocument = false } = {}) {
   const remembered = state.data.saved_views.find((record) => record.id === state.data.last_view_id);
   if (remembered) applyView(remembered, false);
   else {
-    const location = state.data.bodies.find((body) => body.id === state.data.group.location_body_id);
-    setSectorContext(location?.sector ?? state.data.active_sector);
-    if (location) {
-      state.selectedIds.add(location.id);
-      if (state.data.group.destination_body_id) state.selectedIds.add(state.data.group.destination_body_id);
-      state.activeBodyId = location.id;
+    const source = state.data.bodies.find((body) => body.id === state.data.route.source_body_id);
+    setSectorContext(source?.sector ?? state.data.active_sector);
+    if (source) {
+      state.selectedIds.add(source.id);
+      if (state.data.route.destination_body_id) state.selectedIds.add(state.data.route.destination_body_id);
+      state.activeBodyId = source.id;
     }
   }
   if (persistDocument) persist(state.data);
@@ -174,49 +178,110 @@ export function ensureBodyOverride(id) {
   state.draft.body_overrides[id] ??= { alias: "", tags: [], lore: "", stats: [], gm_notes: "" };
   return state.draft.body_overrides[id];
 }
-function mutateGroup(mutator, message) {
+function mutateMissions(mutator, message) {
   const doc = state.draft || state.data;
-  if (!doc?.group) return;
-  mutator(doc.group, doc);
+  if (!doc?.missions) return;
+  mutator(doc);
   if (!state.draft) {
     markViewDirty();
     doc.last_view_id = null;
     schedulePersist(message);
   }
 }
-export function updateGroup(fields) {
-  mutateGroup((group) => {
-    if (Object.hasOwn(fields, "name")) group.name = String(fields.name || "").trim() || "GRUPPE";
-    if (Object.hasOwn(fields, "objective")) group.objective = String(fields.objective || "").trim();
-    if (Object.hasOwn(fields, "show_transfer")) group.show_transfer = !!fields.show_transfer;
-    if (["orbiting", "landed", "in-transit", "unknown"].includes(fields.status)) group.status = fields.status;
-  }, "Route gespeichert");
+export function selectMission(id) {
+  mutateMissions((doc) => {
+    const mission = doc.missions.find((item) => item.id === id);
+    if (!mission) return;
+    doc.active_mission_id = id;
+    if (!state.draft) {
+      const target = doc.bodies.find((body) => body.id === mission.target_ids[0]);
+      if (target && target.sector !== doc.active_sector) setSectorContext(target.sector);
+      for (const targetId of mission.target_ids) {
+        const body = doc.bodies.find((item) => item.id === targetId);
+        if (body?.sector === doc.active_sector) state.selectedIds.add(body.id);
+      }
+      if (target) state.activeBodyId = target.id;
+    }
+  }, "Mission ausgewählt");
 }
-export function setGroupBody(role, id) {
-  mutateGroup((group, doc) => {
+export function addMission() {
+  if ((view.value?.missions?.length ?? 0) >= 3) {
+    announce("Maximal drei Missionen möglich", "error");
+    return null;
+  }
+  const mission = { id: uid("mission"), objective: "", target_ids: [] };
+  mutateMissions((doc) => {
+    doc.missions.push(mission);
+    doc.active_mission_id = mission.id;
+  }, "Mission angelegt");
+  return mission;
+}
+export function updateMission(id, fields) {
+  mutateMissions((doc) => {
+    const mission = doc.missions.find((item) => item.id === id);
+    if (!mission) return;
+    if (Object.hasOwn(fields, "objective")) mission.objective = String(fields.objective || "").trim();
+  }, "Mission gespeichert");
+}
+export function addMissionTarget(missionId, id) {
+  mutateMissions((doc) => {
+    const mission = doc.missions.find((item) => item.id === missionId);
+    if (!mission) return;
     if (!doc.bodies.some((body) => body.id === id && body.kind !== "belt")) return;
-    if (role === "location") {
-      group.location_body_id = id;
-      if (group.destination_body_id === id) group.destination_body_id = null;
-      if (group.status === "unknown") group.status = "orbiting";
-    }
-    if (role === "destination") {
-      group.destination_body_id = id === group.location_body_id ? null : id;
-      if (group.destination_body_id) group.status = "in-transit";
-    }
-  }, role === "location" ? "Standort gespeichert" : "Ziel gespeichert");
+    if (!mission.target_ids.includes(id)) mission.target_ids.push(id);
+  }, "Missionsziel gespeichert");
 }
-export function clearGroupBody(role) {
-  mutateGroup((group) => {
-    if (role === "location") {
-      group.location_body_id = null;
-      group.destination_body_id = null;
-      group.status = "unknown";
-    } else {
-      group.destination_body_id = null;
-      if (group.status === "in-transit") group.status = "orbiting";
-    }
+export function removeMissionTarget(missionId, id) {
+  mutateMissions((doc) => {
+    const mission = doc.missions.find((item) => item.id === missionId);
+    if (!mission) return;
+    mission.target_ids = mission.target_ids.filter((targetId) => targetId !== id);
+  }, "Missionsziel entfernt");
+}
+export function deleteMission(id) {
+  mutateMissions((doc) => {
+    const index = doc.missions.findIndex((mission) => mission.id === id);
+    if (index < 0) return;
+    doc.missions.splice(index, 1);
+    if (doc.active_mission_id === id) doc.active_mission_id = doc.missions[Math.min(index, doc.missions.length - 1)]?.id ?? null;
+  }, "Mission gelöscht");
+}
+function mutateRoute(mutator, message) {
+  const doc = state.draft || state.data;
+  if (!doc?.route) return;
+  mutator(doc.route, doc);
+  if (!state.draft) {
+    markViewDirty();
+    doc.last_view_id = null;
+    schedulePersist(message);
+  }
+}
+export function updateRoute(fields) {
+  mutateRoute((route) => {
+    if (["direct", "hohmann"].includes(fields.calculation)) route.calculation = fields.calculation;
   }, "Route gespeichert");
+}
+export function setRouteBody(role, id) {
+  mutateRoute((route, doc) => {
+    if (!doc.bodies.some((body) => body.id === id && body.kind !== "belt")) return;
+    if (role === "source") {
+      route.source_body_id = id;
+      if (route.destination_body_id === id) route.destination_body_id = null;
+    }
+    if (role === "destination") route.destination_body_id = id === route.source_body_id ? null : id;
+  }, role === "source" ? "Routenstart gespeichert" : "Routenziel gespeichert");
+}
+export function clearRouteBody(role) {
+  mutateRoute((route) => {
+    if (role === "source") route.source_body_id = null;
+    if (role === "destination") route.destination_body_id = null;
+  }, "Route gespeichert");
+}
+export function clearRoute() {
+  mutateRoute((route) => {
+    route.source_body_id = null;
+    route.destination_body_id = null;
+  }, "Route zurückgesetzt");
 }
 export function save() {
   if (!state.draft) return;
@@ -251,8 +316,11 @@ export function deleteBody(id) {
   if (hasChildren) throw new Error("Körper mit Monden kann nicht gelöscht werden.");
   state.draft.bodies = state.draft.bodies.filter((body) => body.id !== id);
   delete state.draft.body_overrides[id];
-  if (state.draft.group.location_body_id === id) state.draft.group.location_body_id = null;
-  if (state.draft.group.destination_body_id === id) state.draft.group.destination_body_id = null;
+  if (state.draft.route.source_body_id === id) state.draft.route.source_body_id = null;
+  if (state.draft.route.destination_body_id === id) state.draft.route.destination_body_id = null;
+  for (const mission of state.draft.missions) {
+    mission.target_ids = mission.target_ids.filter((targetId) => targetId !== id);
+  }
   state.activeBodyId = "sun";
 }
 export function saveView(name) {
@@ -260,9 +328,9 @@ export function saveView(name) {
   if (!label) throw new Error("Die Szene braucht einen Namen.");
   const doc = state.data;
   const record = {
-    id: uid(), name: label, campaign_date: doc.campaign_date,
+    id: uid("view"), name: label, campaign_date: doc.campaign_date,
     selected_ids: [...state.selectedIds], sector: doc.active_sector,
-    active_body_id: state.activeBodyId, camera: clone(state.camera), group: clone(doc.group)
+    active_body_id: state.activeBodyId, camera: clone(state.camera), route: clone(doc.route), missions: clone(doc.missions), active_mission_id: doc.active_mission_id
   };
   doc.saved_views.push(record);
   doc.last_view_id = record.id;
@@ -280,7 +348,7 @@ export function updateView(id) {
   const record = {
     id, name: current.name, campaign_date: doc.campaign_date,
     selected_ids: [...state.selectedIds], sector: doc.active_sector,
-    active_body_id: state.activeBodyId, camera: clone(state.camera), group: clone(doc.group)
+    active_body_id: state.activeBodyId, camera: clone(state.camera), route: clone(doc.route), missions: clone(doc.missions), active_mission_id: doc.active_mission_id
   };
   doc.saved_views.splice(index, 1, record);
   doc.last_view_id = id;
@@ -315,7 +383,9 @@ export function createPublishedSnapshot() {
     sector: doc.active_sector,
     active_body_id: state.activeBodyId,
     camera: clone(state.camera),
-    group: clone(doc.group)
+    route: clone(doc.route),
+    missions: clone(doc.missions),
+    active_mission_id: doc.active_mission_id
   };
   doc.saved_views = [record];
   doc.last_view_id = record.id;

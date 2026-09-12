@@ -1,27 +1,29 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { activeBody, activeSector, adopt, boot, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, publishCurrentView, reset, saveView, setCampaignDate, setGroupBody, setSector, state, updateView, view } from "./lib/state.js";
+import { activeBody, activeMission, activeRoute, activeSector, adopt, boot, clearRoute, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, publishCurrentView, reset, saveView, setCampaignDate, setRouteBody, setSector, state, updateView, view } from "./lib/state.js";
 import { foundryMode, initialPublishedSnapshot, normalize, onPublishedSnapshot } from "./lib/storage.js";
 import { SECTORS } from "./lib/seed.js";
-import { auDistanceLabel, distanceLabel, lightDelayLabel, positionsFor } from "./lib/orbit.js";
+import { auDistanceLabel, distanceLabel, hohmannTransferPlan, lightDelayLabel, positionsFor } from "./lib/orbit.js";
 import { addCalendarStep, parseCalendarDate, replaceCalendarPart, todayCalendarDate } from "./lib/date.js";
 import { bodyDisplayName, bodyPlayerLore, bodyPlayerStats, bodyPlayerTags, bodyScienceDescription, presentBody } from "./lib/presentation.js";
 import OrbitalMap from "./components/OrbitalMap.vue";
 import BodyEditor from "./components/BodyEditor.vue";
 import BodyPicker from "./components/BodyPicker.vue";
 import RoutePanel from "./components/RoutePanel.vue";
+import MissionPanel from "./components/MissionPanel.vue";
 
 const fileInput = ref(null);
 const showViews = ref(false);
 const showPicker = ref(false);
 const showRoute = ref(false);
+const showMissions = ref(false);
 const showData = ref(false);
 const scale = ref(1);
 const isPlaying = ref(false);
 const selectedStep = ref("day");
 const embeddedMode = foundryMode();
 const foundryPlayer = embeddedMode === "player";
-const presentationMode = ref(foundryPlayer);
+const playerMode = foundryPlayer;
 const waitingForPublishedView = ref(foundryPlayer && !initialPublishedSnapshot());
 const dossierOpen = ref(false);
 const newViewName = ref("");
@@ -62,23 +64,29 @@ const activeVisual = computed(() => activeStatsAll.value.find((item) => item.lab
 const activeStats = computed(() => activeStatsAll.value.filter((item) => item.label.trim().toLocaleLowerCase("de-DE") !== "darstellung"));
 const solved = computed(() => positionsFor(view.value?.bodies ?? [], view.value?.reference_epoch, view.value?.campaign_date));
 const activePosition = computed(() => solved.value.positions.get(activeBody.value?.id));
-const groupLocation = computed(() => (view.value?.bodies ?? []).find((body) => body.id === view.value?.group?.location_body_id));
-const groupDestination = computed(() => (view.value?.bodies ?? []).find((body) => body.id === view.value?.group?.destination_body_id));
-const groupDistance = computed(() => {
-  const from = solved.value.positions.get(groupLocation.value?.id);
+const routeSource = computed(() => (view.value?.bodies ?? []).find((body) => body.id === activeRoute.value?.source_body_id));
+const routeDestination = computed(() => (view.value?.bodies ?? []).find((body) => body.id === activeRoute.value?.destination_body_id));
+const routeSourceDistance = computed(() => {
+  const from = solved.value.positions.get(routeSource.value?.id);
   const to = activePosition.value;
   return from && to ? Math.hypot(to.x - from.x, to.y - from.y) : null;
 });
 const routeDistance = computed(() => {
-  const from = solved.value.positions.get(groupLocation.value?.id);
-  const to = solved.value.positions.get(groupDestination.value?.id);
+  const from = solved.value.positions.get(routeSource.value?.id);
+  const to = solved.value.positions.get(routeDestination.value?.id);
   return from && to ? Math.hypot(to.x - from.x, to.y - from.y) : null;
 });
+const routeTransfer = computed(() => activeRoute.value?.calculation === "hohmann"
+  ? hohmannTransferPlan(routeSource.value, routeDestination.value, view.value?.reference_epoch, view.value?.campaign_date)
+  : null);
+const missionIndex = computed(() => Math.max(0, (view.value?.missions ?? []).findIndex((mission) => mission.id === activeMission.value?.id)));
+const missionTargetCount = computed(() => activeMission.value?.target_ids?.length ?? 0);
 const heliocentricDistance = computed(() => activePosition.value ? Math.hypot(activePosition.value.x, activePosition.value.y) : null);
-const groupStatus = computed(() => ({ orbiting: "IM ORBIT", landed: "GELANDET", "in-transit": "IM TRANSIT", unknown: "POSITION OFFEN" }[view.value?.group?.status] ?? "POSITION OFFEN"));
-const activeRole = computed(() => activeBody.value?.id === groupLocation.value?.id
-  ? `${view.value.group.name} · ${groupStatus.value}`
-  : activeBody.value?.id === groupDestination.value?.id ? "NAVIGATIONSZIEL" : "");
+const activeRole = computed(() => activeBody.value?.id === routeSource.value?.id
+  ? "ROUTENSTART"
+  : activeBody.value?.id === routeDestination.value?.id
+    ? "ROUTENZIEL"
+    : activeMission.value?.target_ids?.includes(activeBody.value?.id) ? "MISSIONSZIEL" : "");
 const style = computed(() => ({ transform: `translate(-50%, -50%) scale(${scale.value})` }));
 const dateParts = computed(() => parseCalendarDate(view.value?.campaign_date) ?? { year: 2026, month: 1, day: 1 });
 const activeView = computed(() => view.value?.saved_views.find((record) => record.id === state.activeViewId));
@@ -116,25 +124,6 @@ function startEditing() {
   closeMenus();
   openEditor("dossier");
 }
-async function startPresentation() {
-  stopPlayback();
-  closeMenus();
-  presentationMode.value = true;
-  try { await document.documentElement.requestFullscreen?.(); } catch { /* Fullscreen bleibt optional. */ }
-}
-function exitPresentation() {
-  presentationMode.value = false;
-  if (document.fullscreenElement) document.exitFullscreen?.();
-}
-function requestExitPresentation() {
-  if (foundryPlayer) return;
-  openConfirm({
-    title: "Präsentation beenden?",
-    message: "Die GM-Werkzeuge und Datenverwaltung werden wieder eingeblendet.",
-    confirmLabel: "GM öffnen",
-    onConfirm: exitPresentation
-  });
-}
 async function freezeForPlayers() {
   stopPlayback();
   closeMenus();
@@ -149,13 +138,19 @@ function closeMenus() {
   showPicker.value = false;
   showViews.value = false;
   showRoute.value = false;
+  showMissions.value = false;
   showData.value = false;
 }
 function toggleMenu(name) {
-  const menu = { picker: showPicker, views: showViews, route: showRoute, data: showData }[name];
+  const menu = { picker: showPicker, views: showViews, route: showRoute, missions: showMissions, data: showData }[name];
   const next = !menu.value;
   closeMenus();
   menu.value = next;
+}
+function openMissions() {
+  if (playerMode) return;
+  closeMenus();
+  showMissions.value = true;
 }
 function openConfirm({ title, message, confirmLabel = "Bestätigen", tone = "primary", onConfirm }) {
   dialog.value = { title, message, confirmLabel, tone, onConfirm };
@@ -169,7 +164,7 @@ function confirmDialog() {
 function onKeydown(event) {
   if (event.key !== "Escape" || state.editing) return;
   if (dialog.value) dialog.value = null;
-  else if (!presentationMode.value) closeMenus();
+  else closeMenus();
 }
 function exportData() {
   const link = document.createElement("a");
@@ -235,24 +230,24 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
 </script>
 
 <template>
-  <div id="stage"><main id="sheet" :class="{ presentation: presentationMode }" :style="style">
+  <div id="stage"><main id="sheet" :class="{ 'player-view': playerMode }" :style="style">
     <header class="hud">
-      <div class="hud-id"><span class="eyebrow">P2 / FLUGDYNAMIK</span><h1>Orbital<span>karte</span></h1><small><i></i> {{ presentationMode ? 'PRÄSENTATION' : 'GM-KONSOLE' }}</small></div>
-      <nav v-if="!presentationMode" class="sector-tabs" aria-label="Sektor"><button v-for="sector in SECTORS" :key="sector.id" :class="{ active: activeSector.id === sector.id }" @click="setSector(sector.id)">{{ sector.name }}</button></nav>
-      <div v-else class="presentation-title"><span class="eyebrow">AKTIVER SEKTOR</span><strong>{{ activeSector.name }}</strong><small>{{ view.campaign_date }}</small></div>
-      <div v-if="!presentationMode" class="hud-tools">
+      <div class="hud-id"><span class="eyebrow">P2 / FLUGDYNAMIK</span><h1>Orbital<span>karte</span></h1><small><i></i> {{ playerMode ? 'SPIELERANSICHT' : 'GM-KONSOLE' }}</small></div>
+      <nav v-if="!playerMode" class="sector-tabs" aria-label="Sektor"><button v-for="sector in SECTORS" :key="sector.id" :class="{ active: activeSector.id === sector.id }" @click="setSector(sector.id)">{{ sector.name }}</button></nav>
+      <div v-else class="player-title"><span class="eyebrow">AKTIVER SEKTOR</span><strong>{{ activeSector.name }}</strong><small>{{ view.campaign_date }}</small></div>
+      <div v-if="!playerMode" class="hud-tools">
         <button class="btn" :aria-expanded="showPicker" @click="toggleMenu('picker')">Anzeige</button>
         <button class="btn" :aria-expanded="showViews" @click="toggleMenu('views')">Szenen</button>
         <button class="btn" :aria-expanded="showRoute" @click="toggleMenu('route')">Route</button>
+        <button class="btn" :aria-expanded="showMissions" @click="toggleMenu('missions')">Missionen</button>
         <button class="btn" @click="startEditing">Dossier</button>
         <button v-if="embeddedMode === 'gm'" class="btn primary" @click="freezeForPlayers">Spieler einfrieren</button>
-        <button class="btn" @click="startPresentation">Präsentieren</button>
         <button class="data-trigger" :aria-expanded="showData" aria-label="Datenverwaltung" @click="toggleMenu('data')">•••</button>
       </div>
-      <div v-else class="hud-tools presentation-tools"><span>SPIELERANSICHT · KAMERA FIX</span><button v-if="!foundryPlayer" class="btn" @click="requestExitPresentation">GM öffnen</button></div>
+      <div v-else class="hud-tools player-tools"><span>SPIELERANSICHT · KAMERA FIX</span></div>
     </header>
 
-    <section v-if="!presentationMode" class="control-strip">
+    <section v-if="!playerMode" class="control-strip">
       <div class="strip-index">SIM<strong>{{ isPlaying ? 'RUN' : 'HALT' }}</strong></div>
       <div class="date-control">
         <span>SIMULATION / UTC</span>
@@ -272,12 +267,12 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
       <div class="strip-context"><span>AKTIVE SZENE<strong>{{ activeView ? `${activeView.name}${state.viewDirty ? ' · GEÄNDERT' : ''}` : 'UNGESPEICHERTER STAND' }}</strong></span><span>KÖRPER<strong>{{ state.selectedIds.size.toString().padStart(2, '0') }} SICHTBAR</strong></span></div>
     </section>
 
-    <section v-else class="presentation-strip"><span>MISSIONSDATUM<strong>{{ view.campaign_date }}</strong></span><span>STATUS<strong>{{ groupStatus }}</strong></span><span v-if="routeDistance !== null">ROUTENDISTANZ<strong>{{ auDistanceLabel(routeDistance) }}</strong></span><span v-if="routeDistance !== null">SIGNALLAUFZEIT<strong>{{ lightDelayLabel(routeDistance) }}</strong></span></section>
+    <section v-else class="player-strip"><span>MISSIONSDATUM<strong>{{ view.campaign_date }}</strong></span><span v-if="activeMission">MISSION<strong>{{ missionIndex + 1 }} / {{ view.missions.length }} · {{ missionTargetCount }} {{ missionTargetCount === 1 ? 'ZIEL' : 'ZIELE' }}</strong></span><span v-if="routeSource || routeDestination">ROUTE<strong>{{ activeRoute.calculation === 'hohmann' ? 'HOHMANN · EFFIZIENT' : 'DIREKT' }}</strong></span><span v-if="routeTransfer">FLUGZEIT<strong>{{ routeTransfer.flightDays }} T</strong></span><span v-else-if="routeDistance !== null">DISTANZ<strong>{{ auDistanceLabel(routeDistance) }}</strong></span><span v-if="routeDistance !== null">SIGNALLAUFZEIT<strong>{{ lightDelayLabel(routeDistance) }}</strong></span></section>
 
-    <OrbitalMap :interactive="!presentationMode" :selectable="!waitingForPublishedView" />
+    <OrbitalMap :interactive="!playerMode" :selectable="!waitingForPublishedView" @edit-missions="openMissions" />
 
     <aside v-if="activeBody" class="detail-panel" :class="{ expanded: dossierOpen }">
-      <header><span class="eyebrow">OBJ / {{ activeBody.id }}</span><button class="dossier-toggle" @click="dossierOpen = !dossierOpen">{{ dossierOpen ? 'KOMPAKT' : 'DOSSIER' }}</button></header>
+      <header><span class="eyebrow">OBJ / {{ activeBody.id }}</span><div class="detail-panel__actions"><button v-if="!playerMode && (routeSource || routeDestination)" class="route-reset" aria-label="Gespeicherte Route zurücksetzen" @click="clearRoute">Route zurücksetzen</button><button class="dossier-toggle" @click="dossierOpen = !dossierOpen">{{ dossierOpen ? 'KOMPAKT' : 'DOSSIER' }}</button></div></header>
       <div class="object-title"><span>{{ kindLabel(activeBody.kind) }}{{ activeBody.is_custom ? ' · GM' : '' }}</span><h2>{{ activeInfo.name }}</h2></div>
       <p v-if="activeRole" class="group-context">{{ activeRole }}</p>
       <p v-if="activeTags.length" class="tags"><span v-for="tag in activeTags" :key="tag">{{ tag }}</span></p>
@@ -286,15 +281,16 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
       <dl>
         <dt>Primärkörper</dt><dd>{{ activeParent ? bodyDisplayName(view, activeParent) : activeBody.kind === 'star' ? 'Referenz' : activeBody.kind === 'belt' ? 'Sol · Bezugssystem' : 'Sonnenbaryzentrum' }}</dd>
         <template v-if="activeBody.kind !== 'star' && activeBody.kind !== 'belt' && heliocentricDistance !== null"><dt>Distanz zu Sol</dt><dd>{{ distanceLabel(heliocentricDistance) }}</dd></template>
-        <template v-if="activeBody.kind !== 'belt' && groupLocation && groupDistance !== null"><dt>Distanz zur Gruppe</dt><dd>{{ distanceLabel(groupDistance) }}</dd><dt>Signallaufzeit</dt><dd>{{ lightDelayLabel(groupDistance) }}</dd></template>
+        <template v-if="activeBody.kind !== 'belt' && routeSource && routeSourceDistance !== null"><dt>Distanz zum Routenstart</dt><dd>{{ distanceLabel(routeSourceDistance) }}</dd><dt>Signallaufzeit</dt><dd>{{ lightDelayLabel(routeSourceDistance) }}</dd></template>
         <template v-if="dossierOpen"><template v-if="activeBody.kind !== 'belt'"><dt>Große Halbachse</dt><dd>{{ distanceLabel(activeBody.semi_major_axis_au) }}</dd><dt>Exzentrizität</dt><dd>{{ activeBody.eccentricity.toLocaleString('de-DE') }}</dd><dt>Umlaufzeit</dt><dd>{{ activeBody.orbital_period_days ? `${activeBody.orbital_period_days.toLocaleString('de-DE')} T` : 'statisch' }}</dd></template><template v-for="stat in activeStats" :key="`${stat.label}-${stat.value}`"><dt>{{ stat.label }}</dt><dd>{{ stat.value }}</dd></template></template>
       </dl>
-      <div v-if="!presentationMode" class="gm-context-actions"><button @click="startEditing">Dossier bearbeiten</button><button v-if="activeBody.kind !== 'belt'" @click="setGroupBody('location', activeBody.id)">Als Standort</button><button v-if="activeBody.kind !== 'belt'" @click="setGroupBody('destination', activeBody.id)">Als Ziel</button></div>
+      <div v-if="!playerMode" class="gm-context-actions"><button @click="startEditing">Dossier bearbeiten</button><button v-if="activeBody.kind !== 'belt'" @click="setRouteBody('source', activeBody.id)">Als Routenstart</button><button v-if="activeBody.kind !== 'belt'" @click="setRouteBody('destination', activeBody.id)">Als Routenziel</button></div>
       <footer><span>{{ dossierOpen ? 'KAMPAGNENDOSSIER' : 'NAV-ÜBERSICHT' }}</span><strong>VALID</strong></footer>
     </aside>
 
     <BodyPicker v-if="showPicker" @close="showPicker = false" />
     <RoutePanel v-if="showRoute" @close="showRoute = false" />
+    <MissionPanel v-if="showMissions" @close="showMissions = false" />
 
     <aside v-if="showViews" class="popover views" role="dialog" aria-label="Gespeicherte Szenen" @keydown.esc="showViews = false">
       <header><span class="eyebrow">GESPEICHERTE SZENEN</span><button class="icon-btn" @click="showViews = false">×</button></header>

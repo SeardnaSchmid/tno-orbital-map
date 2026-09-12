@@ -49,12 +49,13 @@ test("Eigene Koerper erhalten immer eine Beschreibung ihrer Darstellung", () => 
   assert.equal(doc.bodies[0].color_note, "orange · vom GM festgelegt");
 });
 
-test("fehlende Gürtel werden ergänzt, bleiben aber aus Kampagnenrouten heraus", () => {
+test("fehlende Gürtel werden ergänzt, bleiben aber aus Missionen heraus", () => {
   const doc = normalize({
     version: 4,
     bodies,
     active_sector: "asteroidenguertel",
-    group: { location_body_id: "asteroid-belt", destination_body_id: "kuiper-belt", status: "in-transit" },
+    route: { source_body_id: "asteroid-belt", destination_body_id: "kuiper-belt", calculation: "direct" },
+    missions: [{ id: "belt-targets", target_ids: ["asteroid-belt", "kuiper-belt"] }],
     saved_views: [{
       id: "belt-view", name: "Gürtel", campaign_date: "2026-09-10", sector: "asteroidenguertel",
       selected_ids: ["sun", "asteroid-belt"], active_body_id: "asteroid-belt"
@@ -64,8 +65,8 @@ test("fehlende Gürtel werden ergänzt, bleiben aber aus Kampagnenrouten heraus"
   assert.equal(doc.bodies.find((body) => body.id === "kuiper-belt")?.kind, "belt");
   assert.deepEqual(doc.saved_views[0].selected_ids, ["sun", "asteroid-belt"]);
   assert.equal(doc.saved_views[0].active_body_id, "asteroid-belt");
-  assert.equal(doc.group.location_body_id, null);
-  assert.equal(doc.group.destination_body_id, null);
+  assert.deepEqual(doc.route, { source_body_id: null, destination_body_id: null, calculation: "direct" });
+  assert.deepEqual(doc.missions, [{ id: "belt-targets", objective: "", target_ids: [] }]);
 });
 
 test("ein gespeicherter Gürtel folgt dem Seed und nicht seiner eigenen alten Kopie", () => {
@@ -90,14 +91,14 @@ test("Version 3 behaelt Kampagnentext und erhaelt neue Katalogdaten", () => {
     active_sector: "inneres-system"
   });
   const earth = doc.bodies.find((body) => body.id === "earth");
-  assert.equal(doc.version, 4);
+  assert.equal(doc.version, 6);
   assert.equal(bodyPlayerLore(doc, earth), "Alte Spielernotiz.");
   assert.ok(earth.description);
   assert.ok(earth.stats.some((item) => item.label === "Durchmesser"));
   assert.ok(bodyPlayerStats(doc, earth).some((item) => item.label === "Fraktion"));
 });
 
-test("Gruppenposition und vollstaendige Ansicht werden normalisiert", () => {
+test("alte Kampagnenroute wird in Route und Missionsziel aufgeteilt", () => {
   const doc = normalize({
     bodies,
     active_sector: "inneres-system",
@@ -109,11 +110,100 @@ test("Gruppenposition und vollstaendige Ansicht werden normalisiert", () => {
       camera: { focus: "sun", auPerScreen: 4, zoom: 2, panX: 35, panY: -12 }
     }]
   });
-  assert.deepEqual(doc.group, { name: "Hermes", objective: "Kurs auf Sol halten.", show_transfer: false, location_body_id: "earth", destination_body_id: "sun", status: "in-transit" });
+  assert.deepEqual(doc.route, { source_body_id: "earth", destination_body_id: "sun", calculation: "direct" });
+  assert.deepEqual(doc.missions, [{ id: "mission-1", objective: "Kurs auf Sol halten.", target_ids: ["sun"] }]);
+  assert.equal(doc.active_mission_id, "mission-1");
+  assert.equal("group" in doc, false);
   assert.equal(doc.saved_views[0].active_body_id, "earth");
   assert.deepEqual(doc.saved_views[0].camera, { focus: "sun", auPerScreen: 4, zoom: 2, panX: 35, panY: -12 });
   assert.equal(doc.saved_views[0].campaign_date, "10000-01-01");
   assert.equal(doc.last_view_id, "view-1");
+});
+
+test("alte Missionen behalten Aufgaben und Ziele, die aktive Route wird getrennt", () => {
+  const doc = normalize({
+    version: 5,
+    bodies,
+    active_sector: "inneres-system",
+    missions: [
+      { id: "hinflug", objective: "Zum Mars.", source_body_id: "earth", destination_body_id: "sun", calculation: "hohmann" },
+      { id: "rueckflug", objective: "Zurück.", source_body_id: "sun", destination_body_id: "earth", calculation: "direct" }
+    ],
+    active_mission_id: "rueckflug"
+  });
+  assert.equal(doc.missions.length, 2);
+  assert.deepEqual(doc.missions[0], { id: "hinflug", objective: "Zum Mars.", target_ids: ["sun"] });
+  assert.deepEqual(doc.missions[1], { id: "rueckflug", objective: "Zurück.", target_ids: ["earth"] });
+  assert.deepEqual(doc.route, { source_body_id: "sun", destination_body_id: "earth", calculation: "direct" });
+  assert.equal(doc.active_mission_id, "rueckflug");
+});
+
+test("eine Mission bewahrt mehrere eindeutige Ziele", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    route: { source_body_id: "sun", destination_body_id: "earth", calculation: "hohmann" },
+    missions: [{ id: "erkundung", objective: "Beide prüfen.", target_ids: ["earth", "sun", "earth", "asteroid-belt"] }]
+  });
+  assert.deepEqual(doc.missions, [{ id: "erkundung", objective: "Beide prüfen.", target_ids: ["earth", "sun"] }]);
+  assert.deepEqual(doc.route, { source_body_id: "sun", destination_body_id: "earth", calculation: "hohmann" });
+});
+
+test("eine Mission darf ohne Ziel gespeichert werden", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    missions: [{ id: "leer", objective: "Ohne Ziel", target_ids: [] }],
+    active_mission_id: "leer"
+  });
+  assert.deepEqual(doc.missions, [{ id: "leer", objective: "Ohne Ziel", target_ids: [] }]);
+  assert.equal(doc.active_mission_id, "leer");
+});
+
+test("höchstens drei Missionen werden aktiv gehalten", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    missions: [
+      { id: "eins", target_ids: [] },
+      { id: "zwei", target_ids: ["earth"] },
+      { id: "drei", target_ids: ["sun"] },
+      { id: "vier", target_ids: ["earth"] }
+    ],
+    active_mission_id: "vier"
+  });
+  assert.deepEqual(doc.missions.map((mission) => mission.id), ["eins", "zwei", "drei"]);
+  assert.equal(doc.active_mission_id, "eins");
+});
+
+test("eine Szene kann bewusst keine Mission enthalten", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    missions: [{ id: "aktuell", objective: "Aktuell", target_ids: ["earth"] }],
+    active_mission_id: "aktuell",
+    saved_views: [{ id: "ohne", name: "Ohne Mission", sector: "inneres-system", missions: [], active_mission_id: null }]
+  });
+  assert.deepEqual(doc.saved_views[0].missions, []);
+  assert.equal(doc.saved_views[0].active_mission_id, null);
+});
+
+test("doppelte Missions-IDs werden beim Import eindeutig", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    missions: [
+      { id: "mission-2", objective: "A", target_ids: ["earth"] },
+      { id: "mission-2", objective: "B", target_ids: ["sun"] }
+    ]
+  });
+  assert.equal(new Set(doc.missions.map((mission) => mission.id)).size, 2);
+  assert.equal(doc.active_mission_id, doc.missions[0].id);
 });
 
 test("eine nicht mehr vorhandene letzte Szene wird verworfen", () => {

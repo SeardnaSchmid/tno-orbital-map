@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { activeBody, activeSector, markViewDirty, state, view, selectBody } from "../lib/state.js";
+import { activeBody, activeMission, activeRoute, activeSector, markViewDirty, selectBody, selectMission, state, view } from "../lib/state.js";
 import { BELTS, RING_SYSTEMS } from "../lib/seed.js";
 import { auDistanceLabel, distanceLabel, hohmannTransferPlan, hohmannTransferPoints, orbitTrack, positionsFor } from "../lib/orbit.js";
 import { markerArt } from "../lib/marker.js";
@@ -10,6 +10,7 @@ const props = defineProps({
   interactive: { type: Boolean, default: true },
   selectable: { type: Boolean, default: true }
 });
+const emit = defineEmits(["edit-missions"]);
 
 const W = 1840, H = 840, DETAIL_GUTTER = 430;
 const MAP_CENTER_X = (W + DETAIL_GUTTER) / 2;
@@ -22,21 +23,29 @@ const CLUSTER_RADIUS = 22;
 const CLUSTER_RANK = { star: 0, planet: 1, dwarf_planet: 2, custom: 3, comet: 4, asteroid: 5, moon: 6 };
 const BELT_BY_ID = new Map(BELTS.map((belt) => [belt.id, belt]));
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const MISSION_CARD_TOP = 58, MISSION_CARD_WIDTH = 390, MISSION_CARD_HEIGHT = 112, MISSION_CARD_GAP = 8;
+const MISSION_COLORS = ["#72bdc7", "#d3a14a", "#d87c70"];
 const zoom = computed({ get: () => state.camera.zoom ?? 1, set: (value) => { state.camera.zoom = value; markViewDirty(); } });
 const panX = computed({ get: () => state.camera.panX ?? 0, set: (value) => { state.camera.panX = value; markViewDirty(); } });
 const panY = computed({ get: () => state.camera.panY ?? 0, set: (value) => { state.camera.panY = value; markViewDirty(); } });
 const isPanning = ref(false);
 let lastPointer = null, pressOrigin = null, captured = false;
 const solved = computed(() => positionsFor(view.value?.bodies ?? [], view.value?.reference_epoch, view.value?.campaign_date));
-const groupIdsInSector = computed(() => {
-  const ids = [view.value?.group?.location_body_id, view.value?.group?.destination_body_id].filter(Boolean);
+const activeMissionIndex = computed(() => (view.value?.missions ?? []).findIndex((mission) => mission.id === activeMission.value?.id));
+const missionWindow = computed(() => {
+  const missions = view.value?.missions ?? [];
+  return missions.slice(0, 3).map((mission, slot) => ({ mission, number: slot + 1, slot }));
+});
+const contextIdsInSector = computed(() => {
+  const missionIds = missionWindow.value.flatMap(({ mission }) => mission.target_ids);
+  const ids = [activeRoute.value?.source_body_id, activeRoute.value?.destination_body_id, ...missionIds].filter(Boolean);
   const byId = new Map((view.value?.bodies ?? []).map((body) => [body.id, body]));
   return new Set(ids.filter((id) => byId.get(id)?.sector === activeSector.value.id));
 });
 
 const visibleIds = computed(() => {
   const ids = new Set(state.selectedIds);
-  groupIdsInSector.value.forEach((id) => ids.add(id));
+  contextIdsInSector.value.forEach((id) => ids.add(id));
   const byId = new Map((view.value?.bodies ?? []).map((body) => [body.id, body]));
   /* Ein Mond ohne seinen Primärkörper hinge in der Luft, darum kommen fehlende
    * Eltern mit. Ein abgewählter Stern nicht: er ist der Vorfahr von allem, und
@@ -51,9 +60,9 @@ const visibleIds = computed(() => {
   return ids;
 });
 const bodyById = computed(() => new Map((view.value?.bodies ?? []).map((body) => [body.id, body])));
-const routeSource = computed(() => bodyById.value.get(view.value?.group?.location_body_id) ?? null);
-const routeDestination = computed(() => bodyById.value.get(view.value?.group?.destination_body_id) ?? null);
-const transferPlan = computed(() => view.value?.group?.show_transfer ? hohmannTransferPlan(
+const routeSource = computed(() => bodyById.value.get(activeRoute.value?.source_body_id) ?? null);
+const routeDestination = computed(() => bodyById.value.get(activeRoute.value?.destination_body_id) ?? null);
+const transferPlan = computed(() => activeRoute.value?.calculation === "hohmann" ? hohmannTransferPlan(
   routeSource.value,
   routeDestination.value,
   view.value?.reference_epoch,
@@ -72,8 +81,8 @@ const autoFrame = computed(() => {
   const positions = solved.value.positions;
   const allBodies = view.value?.bodies ?? [];
   const byId = new Map(allBodies.map((body) => [body.id, body]));
-  const groupIds = groupIdsInSector.value;
-  const selected = allBodies.filter((body) => (state.selectedIds.has(body.id) || groupIds.has(body.id))
+  const contextIds = contextIdsInSector.value;
+  const selected = allBodies.filter((body) => (state.selectedIds.has(body.id) || contextIds.has(body.id))
     && (body.id !== "sun" || state.camera.focus === "sun"));
   const bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
   const add = (x, y) => {
@@ -176,12 +185,28 @@ const bodies = computed(() => (view.value?.bodies ?? []).filter((body) => body.k
   });
   return { ...presentBody(view.value, body), position, ...p, active, art };
 }));
-const groupLocation = computed(() => bodies.value.find((body) => body.id === view.value?.group?.location_body_id) ?? null);
-const groupDestination = computed(() => bodies.value.find((body) => body.id === view.value?.group?.destination_body_id) ?? null);
-const groupRoute = computed(() => {
-  if (!groupLocation.value || !groupDestination.value) return null;
-  const from = groupLocation.value;
-  const to = groupDestination.value;
+const routeSourceMarker = computed(() => bodies.value.find((body) => body.id === activeRoute.value?.source_body_id) ?? null);
+const routeDestinationMarker = computed(() => bodies.value.find((body) => body.id === activeRoute.value?.destination_body_id) ?? null);
+const missionTargetMarkers = computed(() => missionWindow.value.flatMap(({ mission, number, slot }) => mission.target_ids.map((id, index) => {
+  const body = bodies.value.find((item) => item.id === id);
+  return body ? { ...body, missionId: mission.id, missionNumber: number, slot, targetNumber: index + 1 } : null;
+})).filter(Boolean));
+const missionLinks = computed(() => {
+  const cardLeft = W - 18 - (props.interactive ? MISSION_CARD_WIDTH : 450);
+  return missionTargetMarkers.value.map((target) => {
+    const cardY = MISSION_CARD_TOP + target.slot * (MISSION_CARD_HEIGHT + MISSION_CARD_GAP) + MISSION_CARD_HEIGHT / 2;
+    const controlX = Math.max(target.x + 50, cardLeft - 120);
+    return {
+      ...target,
+      color: MISSION_COLORS[target.slot],
+      d: `M${cardLeft} ${cardY} C${cardLeft - 58} ${cardY} ${controlX} ${target.y} ${target.x} ${target.y}`
+    };
+  });
+});
+const directRoute = computed(() => {
+  if (activeRoute.value?.calculation !== "direct" || !routeSourceMarker.value || !routeDestinationMarker.value) return null;
+  const from = routeSourceMarker.value;
+  const to = routeDestinationMarker.value;
   let angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
   if (angle > 90 || angle < -90) angle += 180;
   const label = auDistanceLabel(Math.hypot(to.position.x - from.position.x, to.position.y - from.position.y));
@@ -191,6 +216,17 @@ const groupRoute = computed(() => {
     angle, label, labelWidth: Math.max(70, label.length * 7 + 22)
   };
 });
+const missionNumber = computed(() => activeMissionIndex.value < 0 ? 0 : activeMissionIndex.value + 1);
+function missionTargetsLabel(mission) {
+  const names = (mission?.target_ids ?? []).map((id) => bodyById.value.get(id)).filter(Boolean).map((body) => presentBody(view.value, body).name);
+  if (!names.length) return "NOCH KEIN ZIEL";
+  return names.length > 2 ? `${names.slice(0, 2).join(" · ")} · +${names.length - 2}` : names.join(" · ");
+}
+function openMission(mission) {
+  if (!props.interactive) return;
+  if (mission) selectMission(mission.id);
+  emit("edit-missions");
+}
 /* Moon systems can be orders of magnitude tighter than their planet view: auf
  * Übersichtszoom fallen die Marker eines Systems auf denselben Punkt und mit
  * ihnen ihre Beschriftungen. Die Marker bleiben exakt stehen — nur die Texte
@@ -391,10 +427,17 @@ function stopPan(event) {
     <div class="map-meta map-meta--left"><span>ORB / SOLUTION</span><strong>{{ activeSector.name }}</strong></div>
     <div class="map-meta map-meta--right"><span>GRID {{ distanceLabel(gridStep) }}</span><strong>{{ scaleLabel }} PX/AE</strong></div>
     <div v-if="interactive" class="map-zoom"><button title="Herauszoomen (Rad, mit Umschalt schneller)" aria-label="Herauszoomen" :disabled="zoom <= MIN_ZOOM" @click="zoomBy(.5)">−</button><output :title="`Zoomfaktor auf den eingerahmten Ausschnitt`">{{ zoomLabel }}</output><button title="Hineinzoomen (Rad, mit Umschalt schneller)" aria-label="Hineinzoomen" :disabled="zoom >= zoomCeiling" @click="zoomBy(2)">+</button><button class="map-zoom__auto" :class="{ active: manualFrame }" :title="manualFrame ? 'Manuelle Ansicht lösen und automatisch einpassen' : 'Ansicht automatisch einpassen'" @click="resetViewport">Auto</button></div>
-    <aside class="mission-objective" aria-label="Aktuelle Aufgabe">
-      <span>AKTUELLE AUFGABE</span>
-      <p>{{ view.group.objective || 'Noch keine Aufgabe eingetragen.' }}</p>
-    </aside>
+    <div class="mission-objectives">
+      <aside v-for="entry in missionWindow" :key="entry.mission.id" class="mission-objective" :class="{ editable: interactive, active: entry.mission.id === activeMission?.id }" :style="{ '--mission-color': MISSION_COLORS[entry.slot] }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" :aria-label="`Mission ${entry.number} bearbeiten`" @click="openMission(entry.mission)" @keydown.enter="openMission(entry.mission)">
+        <header><span>{{ entry.mission.id === activeMission?.id ? 'AKTIVE MISSION' : `MISSION ${entry.number}` }}</span><small>{{ entry.number }} / {{ view.missions.length }}</small></header>
+        <p>{{ entry.mission.objective || 'Noch keine Aufgabe eingetragen.' }}</p>
+        <footer><span>{{ missionTargetsLabel(entry.mission) }}</span><strong>{{ entry.mission.target_ids.length }} {{ entry.mission.target_ids.length === 1 ? 'ZIEL' : 'ZIELE' }}</strong></footer>
+      </aside>
+      <aside v-if="!missionWindow.length" class="mission-objective mission-objective--empty" :class="{ editable: interactive }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" aria-label="Mission anlegen" @click="openMission(null)" @keydown.enter="openMission(null)">
+        <header><span>MISSIONEN</span><small>0 / 0</small></header>
+        <p>Noch keine Mission angelegt.</p>
+      </aside>
+    </div>
     <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="2D-Karte des Sonnensystems" draggable="false" @mousedown.prevent @dragstart.prevent @selectstart.prevent @wheel.prevent="onWheel" @pointerdown="startPan" @pointermove="movePointer" @pointerup="stopPan" @pointercancel="stopPan" @lostpointercapture="stopPan">
       <defs>
         <pattern id="minorGrid" :x="gridOriginX" :y="gridOriginY" :width="gridSize" :height="gridSize" patternUnits="userSpaceOnUse"><path class="minor-grid-line" :d="`M${gridSize} 0H0V${gridSize}`" /></pattern>
@@ -430,6 +473,9 @@ function stopPan(event) {
         <path v-if="orbit.ring" class="orbit-ring" :d="orbit.ring" />
         <path v-for="(segment, index) in orbit.trail" :key="index" class="orbit-trail" :d="segment.d" :stroke-opacity="segment.o" />
       </g>
+      <g class="mission-links" aria-hidden="true">
+        <path v-for="link in missionLinks" :key="`mission-link-${link.missionId}-${link.id}`" :d="link.d" :style="{ '--mission-color': link.color }" />
+      </g>
       <g v-if="transferRoute" class="transfer-route" aria-hidden="true">
         <path :d="transferRoute.d" />
         <circle class="transfer-route__launch" :cx="transferRoute.launch.x" :cy="transferRoute.launch.y" r="6" />
@@ -448,11 +494,11 @@ function stopPan(event) {
           <text class="transfer-route__countdown" y="44" text-anchor="middle">{{ transferRoute.waitLabel }} · {{ transferRoute.progressPercent }} % ZYKLUS</text>
         </g>
       </g>
-      <g v-if="groupRoute" class="group-route" aria-hidden="true">
-        <line :x1="groupRoute.x1" :y1="groupRoute.y1" :x2="groupRoute.x2" :y2="groupRoute.y2" />
-        <g :transform="`translate(${groupRoute.x} ${groupRoute.y}) rotate(${groupRoute.angle})`">
-          <rect :x="-groupRoute.labelWidth / 2" y="-11" :width="groupRoute.labelWidth" height="22" rx="3" />
-          <text y="4" text-anchor="middle">{{ groupRoute.label }}</text>
+      <g v-if="directRoute" class="route-line" aria-hidden="true">
+        <line :x1="directRoute.x1" :y1="directRoute.y1" :x2="directRoute.x2" :y2="directRoute.y2" />
+        <g :transform="`translate(${directRoute.x} ${directRoute.y}) rotate(${directRoute.angle})`">
+          <rect :x="-directRoute.labelWidth / 2" y="-11" :width="directRoute.labelWidth" height="22" rx="3" />
+          <text y="4" text-anchor="middle">{{ directRoute.label }}</text>
         </g>
       </g>
       <g v-for="body in markers" :key="body.id" :class="[markerClass(body), { 'is-active': body.active }]"
@@ -479,15 +525,26 @@ function stopPan(event) {
         <text class="body-name" :x="label.lx" :y="label.ly - 3" :text-anchor="label.anchor">{{ label.name.toUpperCase() }}</text>
         <text class="body-distance" :x="label.lx" :y="label.ly + 13" :text-anchor="label.anchor">{{ label.sub }}</text>
       </g>
-      <g v-if="groupLocation" class="group-position" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`${view.group.name} bei ${groupLocation.name}`" @click="selectable && selectBody(groupLocation.id)" @keydown.enter="selectable && selectBody(groupLocation.id)">
-        <circle class="group-position__pulse" :cx="groupLocation.x" :cy="groupLocation.y" r="19" />
-        <path :d="`M${groupLocation.x - 15} ${groupLocation.y}h30M${groupLocation.x} ${groupLocation.y - 15}v30`" />
-        <text :x="groupLocation.x + 24" :y="groupLocation.y + 34">{{ view.group.name.toUpperCase() }}</text>
-        <text class="group-position__status" :x="groupLocation.x + 24" :y="groupLocation.y + 48">POSITION · {{ groupLocation.name.toUpperCase() }}</text>
+      <g v-if="routeSourceMarker" class="route-position" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`Routenstart bei ${routeSourceMarker.name}`" @click="selectable && selectBody(routeSourceMarker.id)" @keydown.enter="selectable && selectBody(routeSourceMarker.id)">
+        <circle class="route-position__pulse" :cx="routeSourceMarker.x" :cy="routeSourceMarker.y" r="19" />
+        <path :d="`M${routeSourceMarker.x - 15} ${routeSourceMarker.y}h30M${routeSourceMarker.x} ${routeSourceMarker.y - 15}v30`" />
+        <text :x="routeSourceMarker.x + 24" :y="routeSourceMarker.y + 34">ROUTENSTART</text>
+        <text class="route-position__body" :x="routeSourceMarker.x + 24" :y="routeSourceMarker.y + 48">{{ routeSourceMarker.name.toUpperCase() }}</text>
+      </g>
+      <g v-if="routeDestinationMarker" class="route-position route-position--destination" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`Routenziel bei ${routeDestinationMarker.name}`" @click="selectable && selectBody(routeDestinationMarker.id)" @keydown.enter="selectable && selectBody(routeDestinationMarker.id)">
+        <circle class="route-position__pulse" :cx="routeDestinationMarker.x" :cy="routeDestinationMarker.y" r="19" />
+        <path :d="`M${routeDestinationMarker.x - 12} ${routeDestinationMarker.y - 12}l24 24M${routeDestinationMarker.x + 12} ${routeDestinationMarker.y - 12}l-24 24`" />
+        <text :x="routeDestinationMarker.x + 24" :y="routeDestinationMarker.y + 34">ROUTENZIEL</text>
+        <text class="route-position__body" :x="routeDestinationMarker.x + 24" :y="routeDestinationMarker.y + 48">{{ routeDestinationMarker.name.toUpperCase() }}</text>
+      </g>
+      <g v-for="target in missionTargetMarkers" :key="`mission-target-${target.missionId}-${target.id}`" class="mission-target" :style="{ '--mission-color': MISSION_COLORS[target.slot] }" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`Mission ${target.missionNumber}, Ziel ${target.targetNumber} bei ${target.name}`" @click="selectable && selectBody(target.id)" @keydown.enter="selectable && selectBody(target.id)">
+        <circle class="mission-target__pulse" :cx="target.x" :cy="target.y" r="25" />
+        <circle :cx="target.x" :cy="target.y" r="17" />
+        <text :x="target.x + 28" :y="target.y - 24">M{{ String(target.missionNumber).padStart(2, '0') }} · ZIEL {{ String(target.targetNumber).padStart(2, '0') }}</text>
       </g>
     </svg>
     <div class="scale-readout"><span :style="{ width: `${gridSize}px` }"></span><b>{{ distanceLabel(gridStep) }}</b></div>
-    <div class="map-readout" style="left:450px"><span>UTC {{ view?.campaign_date }}</span><span>SEL {{ state.selectedIds.size.toString().padStart(2, '0') }}</span><span v-if="groupLocation">POS {{ groupLocation.name }}</span><span v-if="manualFrame" class="map-readout__locked">ANSICHT FIX</span></div>
+    <div class="map-readout" style="left:450px"><span>UTC {{ view?.campaign_date }}</span><span>SEL {{ state.selectedIds.size.toString().padStart(2, '0') }}</span><span v-if="activeMission">MIS {{ missionNumber.toString().padStart(2, '0') }}/{{ view.missions.length.toString().padStart(2, '0') }} · {{ activeMission.target_ids.length }} ZIELE</span><span v-if="routeSource || routeDestination">ROUTE · {{ activeRoute.calculation === 'hohmann' ? 'HOHMANN' : 'DIREKT' }}</span><span v-if="manualFrame" class="map-readout__locked">ANSICHT FIX</span></div>
     <div v-if="solved.problems.length" class="map-warning">{{ solved.problems.join(" · ") }}</div>
     <i class="corner corner--tl"></i><i class="corner corner--tr"></i><i class="corner corner--bl"></i><i class="corner corner--br"></i>
   </section>
