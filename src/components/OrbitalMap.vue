@@ -23,7 +23,27 @@ const CLUSTER_RADIUS = 22;
 const CLUSTER_RANK = { star: 0, planet: 1, dwarf_planet: 2, custom: 3, comet: 4, asteroid: 5, moon: 6 };
 const BELT_BY_ID = new Map(BELTS.map((belt) => [belt.id, belt]));
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const MISSION_CARD_TOP = 58, MISSION_CARD_WIDTH = 390, MISSION_CARD_HEIGHT = 112, MISSION_CARD_GAP = 8;
+/* Die Kartengeometrie steht hier und nur hier. Das Panel der Missionskarten
+ * bekommt seine Masse als Inline-Style aus denselben Konstanten — sonst driften
+ * CSS und Linienfuehrung auseinander und die Leitungen haengen neben ihren
+ * Karten, ohne dass eine Pruefung das meldet. */
+const MISSION_CARD_TOP = 58, MISSION_CARD_HEIGHT = 112, MISSION_CARD_GAP = 8, MISSION_CARD_RIGHT = 18;
+const MISSION_CARD_WIDTH_GM = 390, MISSION_CARD_WIDTH_PLAYER = 450;
+
+/* Eine Anschlussleitung, keine Kurve. Auf dieser Karte bedeutet eine Kurve
+ * Physik — Umlaufbahn, Transferellipse. Eine Linie, die nur sagt "diese Karte
+ * meint jenen Koerper", darf darum keine sein.
+ *
+ * Die Fuehrung ist die eines technischen Hinweisstrichs: ein kurzer waagerechter
+ * Stummel aus der Karte, eine gerade Schraege ueber die Distanz, ein zweiter
+ * Stummel in den Marker. Der Stummel gibt beiden Enden eine klare Richtung,
+ * ohne dass die Schraege selbst geknickt werden muesste. */
+const MISSION_STUB = 24, MISSION_ANCHOR_GAP = 12, MISSION_RIM = 22;
+
+/* Fase statt Knick: der Uebergang vom Stummel in die Schraege wird gekappt,
+ * wie an einer geaetzten Leiterbahn. Ein harter Winkel an dieser Stelle liest
+ * sich als Fehler, eine Rundung als Zierde — die Fase als Fertigung. */
+const MISSION_CHAMFER = 7;
 const MISSION_COLORS = ["#72bdc7", "#d3a14a", "#d87c70"];
 const zoom = computed({ get: () => state.camera.zoom ?? 1, set: (value) => { state.camera.zoom = value; markViewDirty(); } });
 const panX = computed({ get: () => state.camera.panX ?? 0, set: (value) => { state.camera.panX = value; markViewDirty(); } });
@@ -189,17 +209,85 @@ const routeSourceMarker = computed(() => bodies.value.find((body) => body.id ===
 const routeDestinationMarker = computed(() => bodies.value.find((body) => body.id === activeRoute.value?.destination_body_id) ?? null);
 const missionTargetMarkers = computed(() => missionWindow.value.flatMap(({ mission, number, slot }) => mission.target_ids.map((id, index) => {
   const body = bodies.value.find((item) => item.id === id);
-  return body ? { ...body, missionId: mission.id, missionNumber: number, slot, targetNumber: index + 1 } : null;
+  if (!body) return null;
+  /* Die Leitung laeuft immer von den Karten heran. Die Zielmarke setzt sich
+   * darum auf die abgewandte Seite des Markers — sonst kreuzt die Schraege
+   * ihre eigene Beschriftung, und beide werden unlesbar. */
+  const labelSide = body.x < missionCardLeft.value ? -1 : 1;
+  return { ...body, missionId: mission.id, missionNumber: number, slot, targetNumber: index + 1, labelSide };
 })).filter(Boolean));
+const missionCardWidth = computed(() => props.interactive ? MISSION_CARD_WIDTH_GM : MISSION_CARD_WIDTH_PLAYER);
+const missionCardLeft = computed(() => W - MISSION_CARD_RIGHT - missionCardWidth.value);
+const missionCardStyle = computed(() => ({
+  top: `${MISSION_CARD_TOP}px`, right: `${MISSION_CARD_RIGHT}px`,
+  width: `${missionCardWidth.value}px`, gap: `${MISSION_CARD_GAP}px`,
+  "--mission-card-height": `${MISSION_CARD_HEIGHT}px`
+}));
+
+/* Gefast wird jeder echte Richtungswechsel, nicht nur der rechte Winkel:
+ * die Schraege trifft den Stummel in einem beliebigen Winkel. Liegen drei
+ * Punkte fast auf einer Linie, bleibt der Knick weg — sonst entstuende eine
+ * Fase, wo gar keine Ecke ist. */
+function chamferedPath(points) {
+  const path = points.filter((point, index, all) =>
+    index === 0 || Math.hypot(point.x - all[index - 1].x, point.y - all[index - 1].y) > .01);
+  if (path.length < 2) return "";
+  const round = (value) => Math.round(value * 100) / 100;
+  const parts = [`M${round(path[0].x)} ${round(path[0].y)}`];
+  for (let index = 1; index < path.length - 1; index++) {
+    const previous = path[index - 1], corner = path[index], next = path[index + 1];
+    const inLength = Math.hypot(corner.x - previous.x, corner.y - previous.y);
+    const outLength = Math.hypot(next.x - corner.x, next.y - corner.y);
+    const inX = (corner.x - previous.x) / inLength, inY = (corner.y - previous.y) / inLength;
+    const outX = (next.x - corner.x) / outLength, outY = (next.y - corner.y) / outLength;
+    const cut = Math.min(MISSION_CHAMFER, inLength / 2, outLength / 2);
+    if (inX * outX + inY * outY > .999 || cut < .5) {
+      parts.push(`L${round(corner.x)} ${round(corner.y)}`);
+      continue;
+    }
+    parts.push(`L${round(corner.x - inX * cut)} ${round(corner.y - inY * cut)}`);
+    parts.push(`L${round(corner.x + outX * cut)} ${round(corner.y + outY * cut)}`);
+  }
+  const end = path.at(-1);
+  parts.push(`L${round(end.x)} ${round(end.y)}`);
+  return parts.join(" ");
+}
 const missionLinks = computed(() => {
-  const cardLeft = W - 18 - (props.interactive ? MISSION_CARD_WIDTH : 450);
+  const left = missionCardLeft.value;
+  const perMission = new Map();
+  for (const target of missionTargetMarkers.value) {
+    const list = perMission.get(target.missionId) ?? [];
+    list.push(target);
+    perMission.set(target.missionId, list);
+  }
   return missionTargetMarkers.value.map((target) => {
+    /* Mehrere Ziele derselben Karte verlassen sie auf verschiedener Hoehe,
+     * sonst laegen ihre Stummel uebereinander. Der Faecher bleibt im Blech
+     * der Karte. */
+    const siblings = perMission.get(target.missionId);
+    const spread = Math.min(MISSION_ANCHOR_GAP, (MISSION_CARD_HEIGHT - 28) / Math.max(1, siblings.length - 1));
     const cardY = MISSION_CARD_TOP + target.slot * (MISSION_CARD_HEIGHT + MISSION_CARD_GAP) + MISSION_CARD_HEIGHT / 2;
-    const controlX = Math.max(target.x + 50, cardLeft - 120);
+    const anchorY = cardY + (siblings.indexOf(target) - (siblings.length - 1) / 2) * spread;
+    const step = target.x < left ? -1 : 1;
+    const endX = target.x - step * MISSION_RIM;
+    /* Steht das Ziel dicht unter den Karten, ist kein Platz fuer zwei volle
+     * Stummel — dann teilen sie sich, was da ist. */
+    const stub = Math.min(MISSION_STUB, Math.abs(endX - left) / 2);
     return {
       ...target,
       color: MISSION_COLORS[target.slot],
-      d: `M${cardLeft} ${cardY} C${cardLeft - 58} ${cardY} ${controlX} ${target.y} ${target.x} ${target.y}`
+      anchorX: left, anchorY, endX, endY: target.y,
+      /* Die Stummel liegen als volle Striche auf der gestrichelten Leitung:
+       * beide Enden sollen fest an Karte und Marker sitzen, der Weg dazwischen
+       * bleibt die gestrichelte Andeutung. */
+      stubA: `M${left} ${anchorY}h${step * Math.max(2, stub - MISSION_CHAMFER)}`,
+      stubB: `M${endX} ${target.y}h${-step * Math.max(2, stub - MISSION_CHAMFER)}`,
+      d: chamferedPath([
+        { x: left, y: anchorY },
+        { x: left + step * stub, y: anchorY },
+        { x: endX - step * stub, y: target.y },
+        { x: endX, y: target.y }
+      ])
     };
   });
 });
@@ -427,7 +515,7 @@ function stopPan(event) {
     <div class="map-meta map-meta--left"><span>ORB / SOLUTION</span><strong>{{ activeSector.name }}</strong></div>
     <div class="map-meta map-meta--right"><span>GRID {{ distanceLabel(gridStep) }}</span><strong>{{ scaleLabel }} PX/AE</strong></div>
     <div v-if="interactive" class="map-zoom"><button title="Herauszoomen (Rad, mit Umschalt schneller)" aria-label="Herauszoomen" :disabled="zoom <= MIN_ZOOM" @click="zoomBy(.5)">−</button><output :title="`Zoomfaktor auf den eingerahmten Ausschnitt`">{{ zoomLabel }}</output><button title="Hineinzoomen (Rad, mit Umschalt schneller)" aria-label="Hineinzoomen" :disabled="zoom >= zoomCeiling" @click="zoomBy(2)">+</button><button class="map-zoom__auto" :class="{ active: manualFrame }" :title="manualFrame ? 'Manuelle Ansicht lösen und automatisch einpassen' : 'Ansicht automatisch einpassen'" @click="resetViewport">Auto</button></div>
-    <div class="mission-objectives">
+    <div class="mission-objectives" :style="missionCardStyle">
       <aside v-for="entry in missionWindow" :key="entry.mission.id" class="mission-objective" :class="{ editable: interactive, active: entry.mission.id === activeMission?.id }" :style="{ '--mission-color': MISSION_COLORS[entry.slot] }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" :aria-label="`Mission ${entry.number} bearbeiten`" @click="openMission(entry.mission)" @keydown.enter="openMission(entry.mission)">
         <header><span>{{ entry.mission.id === activeMission?.id ? 'AKTIVE MISSION' : `MISSION ${entry.number}` }}</span><small>{{ entry.number }} / {{ view.missions.length }}</small></header>
         <p>{{ entry.mission.objective || 'Noch keine Aufgabe eingetragen.' }}</p>
@@ -474,7 +562,13 @@ function stopPan(event) {
         <path v-for="(segment, index) in orbit.trail" :key="index" class="orbit-trail" :d="segment.d" :stroke-opacity="segment.o" />
       </g>
       <g class="mission-links" aria-hidden="true">
-        <path v-for="link in missionLinks" :key="`mission-link-${link.missionId}-${link.id}`" :d="link.d" :style="{ '--mission-color': link.color }" />
+        <g v-for="link in missionLinks" :key="`mission-link-${link.missionId}-${link.id}`" :style="{ '--mission-color': link.color }" :class="{ dimmed: link.missionId !== activeMission?.id }">
+          <path :d="link.d" />
+          <path class="mission-links__stub" :d="link.stubA" />
+          <path class="mission-links__stub" :d="link.stubB" />
+          <rect class="mission-links__pad" :x="link.anchorX - 3" :y="link.anchorY - 1.5" width="3" height="3" />
+          <path class="mission-links__tip" :d="`M${link.endX} ${link.endY - 4}V${link.endY + 4}`" />
+        </g>
       </g>
       <g v-if="transferRoute" class="transfer-route" aria-hidden="true">
         <path :d="transferRoute.d" />
@@ -540,7 +634,7 @@ function stopPan(event) {
       <g v-for="target in missionTargetMarkers" :key="`mission-target-${target.missionId}-${target.id}`" class="mission-target" :style="{ '--mission-color': MISSION_COLORS[target.slot] }" role="button" :tabindex="selectable ? 0 : -1" :aria-disabled="!selectable" :aria-label="`Mission ${target.missionNumber}, Ziel ${target.targetNumber} bei ${target.name}`" @click="selectable && selectBody(target.id)" @keydown.enter="selectable && selectBody(target.id)">
         <circle class="mission-target__pulse" :cx="target.x" :cy="target.y" r="25" />
         <circle :cx="target.x" :cy="target.y" r="17" />
-        <text :x="target.x + 28" :y="target.y - 24">M{{ String(target.missionNumber).padStart(2, '0') }} · ZIEL {{ String(target.targetNumber).padStart(2, '0') }}</text>
+        <text :x="target.x + target.labelSide * 28" :y="target.y - 24" :text-anchor="target.labelSide < 0 ? 'end' : 'start'">M{{ String(target.missionNumber).padStart(2, '0') }} · ZIEL {{ String(target.targetNumber).padStart(2, '0') }}</text>
       </g>
     </svg>
     <div class="scale-readout"><span :style="{ width: `${gridSize}px` }"></span><b>{{ distanceLabel(gridStep) }}</b></div>
