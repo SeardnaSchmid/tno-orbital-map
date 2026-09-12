@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { activeBody, activeMission, activeRoute, activeSector, adopt, boot, clearRoute, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, publishCurrentView, reset, saveView, setCampaignDate, setRouteBody, setSector, state, updateView, view } from "./lib/state.js";
+import { activeBody, activeMission, activeRoute, activeSector, adopt, boot, clearRoute, clearRouteBody, clearStatus, deleteView, flushPersist, importDocument, loadView, openEditor, publishCurrentView, reset, saveView, setCampaignDate, setRouteBody, setSector, state, updateRoute, updateView, view } from "./lib/state.js";
 import { foundryMode, initialPublishedSnapshot, normalize, onPublishedSnapshot } from "./lib/storage.js";
 import { SECTORS } from "./lib/seed.js";
 import { auDistanceLabel, distanceLabel, hohmannTransferPlan, lightDelayLabel, positionsFor } from "./lib/orbit.js";
@@ -9,13 +9,11 @@ import { bodyDisplayName, bodyPlayerLore, bodyPlayerStats, bodyPlayerTags, bodyS
 import OrbitalMap from "./components/OrbitalMap.vue";
 import BodyEditor from "./components/BodyEditor.vue";
 import BodyPicker from "./components/BodyPicker.vue";
-import RoutePanel from "./components/RoutePanel.vue";
 import MissionPanel from "./components/MissionPanel.vue";
 
 const fileInput = ref(null);
 const showViews = ref(false);
 const showPicker = ref(false);
-const showRoute = ref(false);
 const showMissions = ref(false);
 const showData = ref(false);
 const scale = ref(1);
@@ -137,12 +135,11 @@ async function freezeForPlayers() {
 function closeMenus() {
   showPicker.value = false;
   showViews.value = false;
-  showRoute.value = false;
   showMissions.value = false;
   showData.value = false;
 }
 function toggleMenu(name) {
-  const menu = { picker: showPicker, views: showViews, route: showRoute, missions: showMissions, data: showData }[name];
+  const menu = { picker: showPicker, views: showViews, missions: showMissions, data: showData }[name];
   const next = !menu.value;
   closeMenus();
   menu.value = next;
@@ -238,7 +235,6 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
       <div v-if="!playerMode" class="hud-tools">
         <button class="btn" :aria-expanded="showPicker" @click="toggleMenu('picker')">Anzeige</button>
         <button class="btn" :aria-expanded="showViews" @click="toggleMenu('views')">Szenen</button>
-        <button class="btn" :aria-expanded="showRoute" @click="toggleMenu('route')">Route</button>
         <button class="btn" :aria-expanded="showMissions" @click="toggleMenu('missions')">Missionen</button>
         <button class="btn" @click="startEditing">Dossier</button>
         <button v-if="embeddedMode === 'gm'" class="btn primary" @click="freezeForPlayers">Spieler einfrieren</button>
@@ -272,7 +268,7 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
     <OrbitalMap :interactive="!playerMode" :selectable="!waitingForPublishedView" @edit-missions="openMissions" />
 
     <aside v-if="activeBody" class="detail-panel" :class="{ expanded: dossierOpen }">
-      <header><span class="eyebrow">OBJ / {{ activeBody.id }}</span><div class="detail-panel__actions"><button v-if="!playerMode && (routeSource || routeDestination)" class="route-reset" aria-label="Gespeicherte Route zurücksetzen" @click="clearRoute">Route zurücksetzen</button><button class="dossier-toggle" @click="dossierOpen = !dossierOpen">{{ dossierOpen ? 'KOMPAKT' : 'DOSSIER' }}</button></div></header>
+      <header><span class="eyebrow">OBJ / {{ activeBody.id }}</span><div class="detail-panel__actions"><button class="dossier-toggle" @click="dossierOpen = !dossierOpen">{{ dossierOpen ? 'KOMPAKT' : 'DOSSIER' }}</button><button v-if="!playerMode" class="config-btn" title="Dossier bearbeiten" aria-label="Dossier bearbeiten" @click="startEditing">⚙</button></div></header>
       <div class="object-title"><span>{{ kindLabel(activeBody.kind) }}{{ activeBody.is_custom ? ' · GM' : '' }}</span><h2>{{ activeInfo.name }}</h2></div>
       <p v-if="activeRole" class="group-context">{{ activeRole }}</p>
       <p v-if="activeTags.length" class="tags"><span v-for="tag in activeTags" :key="tag">{{ tag }}</span></p>
@@ -284,12 +280,31 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
         <template v-if="activeBody.kind !== 'belt' && routeSource && routeSourceDistance !== null"><dt>Distanz zum Routenstart</dt><dd>{{ distanceLabel(routeSourceDistance) }}</dd><dt>Signallaufzeit</dt><dd>{{ lightDelayLabel(routeSourceDistance) }}</dd></template>
         <template v-if="dossierOpen"><template v-if="activeBody.kind !== 'belt'"><dt>Große Halbachse</dt><dd>{{ distanceLabel(activeBody.semi_major_axis_au) }}</dd><dt>Exzentrizität</dt><dd>{{ activeBody.eccentricity.toLocaleString('de-DE') }}</dd><dt>Umlaufzeit</dt><dd>{{ activeBody.orbital_period_days ? `${activeBody.orbital_period_days.toLocaleString('de-DE')} T` : 'statisch' }}</dd></template><template v-for="stat in activeStats" :key="`${stat.label}-${stat.value}`"><dt>{{ stat.label }}</dt><dd>{{ stat.value }}</dd></template></template>
       </dl>
-      <div v-if="!playerMode" class="gm-context-actions"><button @click="startEditing">Dossier bearbeiten</button><button v-if="activeBody.kind !== 'belt'" @click="setRouteBody('source', activeBody.id)">Als Routenstart</button><button v-if="activeBody.kind !== 'belt'" @click="setRouteBody('destination', activeBody.id)">Als Routenziel</button></div>
+      <section v-if="!playerMode" class="route-dock">
+        <div class="route-dock__head"><span>ROUTE</span><strong>{{ routeSource ? bodyDisplayName(view, routeSource) : '—' }} → {{ routeDestination ? bodyDisplayName(view, routeDestination) : '—' }}</strong><button v-if="routeSource || routeDestination" class="route-reset" aria-label="Route zurücksetzen" @click="clearRoute">Zurücksetzen</button></div>
+        <div class="route-dock__set">
+          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeSource?.id }" @click="activeBody.id === routeSource?.id ? clearRouteBody('source') : setRouteBody('source', activeBody.id)">{{ activeBody.id === routeSource?.id ? 'Start lösen' : 'Als Routenstart' }}</button>
+          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeDestination?.id }" @click="activeBody.id === routeDestination?.id ? clearRouteBody('destination') : setRouteBody('destination', activeBody.id)">{{ activeBody.id === routeDestination?.id ? 'Ziel lösen' : 'Als Routenziel' }}</button>
+        </div>
+        <div class="route-calculation">
+          <span>BERECHNUNG</span>
+          <div>
+            <button :class="{ active: activeRoute?.calculation === 'direct' }" :aria-pressed="activeRoute?.calculation === 'direct'" @click="updateRoute({ calculation: 'direct' })"><strong>Direkt</strong><small>Gerade Entfernung jetzt</small></button>
+            <button :class="{ active: activeRoute?.calculation === 'hohmann' }" :aria-pressed="activeRoute?.calculation === 'hohmann'" @click="updateRoute({ calculation: 'hohmann' })"><strong>Hohmann</strong><small>Effizienter Transfer</small></button>
+          </div>
+        </div>
+        <div v-if="activeRoute?.calculation === 'direct' && routeDistance !== null" class="route-distance"><span>DIREKTE DISTANZ</span><strong>{{ auDistanceLabel(routeDistance) }}</strong></div>
+        <div v-else-if="activeRoute?.calculation === 'hohmann' && routeTransfer" class="route-plan">
+          <span><small>STARTFENSTER</small><strong>{{ routeTransfer.launchOffsetDays > 0 ? `IN ${routeTransfer.launchOffsetDays} T` : 'JETZT' }}</strong></span>
+          <span><small>FLUGZEIT</small><strong>{{ routeTransfer.flightDays }} T</strong></span>
+          <span><small>ΔV</small><strong>{{ routeTransfer.deltaVKms.toLocaleString('de-DE', { maximumFractionDigits: 2 }) }} KM/S</strong></span>
+        </div>
+        <p v-else-if="activeRoute?.calculation === 'hohmann' && routeSource && routeDestination" class="route-unavailable">Ein Hohmann-Transfer ist nur zwischen Körpern mit demselben Primärkörper und berechenbaren Umlaufbahnen möglich.</p>
+      </section>
       <footer><span>{{ dossierOpen ? 'KAMPAGNENDOSSIER' : 'NAV-ÜBERSICHT' }}</span><strong>VALID</strong></footer>
     </aside>
 
     <BodyPicker v-if="showPicker" @close="showPicker = false" />
-    <RoutePanel v-if="showRoute" @close="showRoute = false" />
     <MissionPanel v-if="showMissions" @close="showMissions = false" />
 
     <aside v-if="showViews" class="popover views" role="dialog" aria-label="Gespeicherte Szenen" @keydown.esc="showViews = false">
