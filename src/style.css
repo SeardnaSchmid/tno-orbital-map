@@ -229,8 +229,6 @@ button { cursor: pointer; }
 .detail-panel.expanded { width: 420px; max-height: 832px; }
 .detail-panel > header { display: flex; height: 34px; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid var(--line-dim); }
 .detail-panel__actions { display: flex; align-items: center; gap: 6px; }
-.route-reset { padding: 5px 7px; border: 1px solid #754c47; background: rgb(215 102 87 / .05); color: #c8776d; font: 8px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-.route-reset:hover { border-color: #a9675f; background: rgb(215 102 87 / .12); color: #ef9b90; }
 .dossier-toggle { padding: 5px 7px; border: 1px solid var(--line-dim); background: transparent; color: var(--cyan); font: 8px var(--mono); letter-spacing: .12em; }
 .dossier-toggle:hover { color: var(--cyan-hi); border-color: var(--line-hi); }
 .object-title { padding: 14px 18px 0; }
@@ -345,15 +343,23 @@ button { cursor: pointer; }
 /* Die Route wird am Koerper gestellt statt in einem eigenen Fenster: wer sie
  * setzt, schaut ohnehin auf das Dossier des Koerpers, den er meint. */
 .route-dock { padding: 11px 18px 12px; border-top: 1px solid var(--line-dim); background: rgb(114 189 199 / .025); }
-.route-dock__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
-.route-dock__head > span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
-.route-dock__head > strong { overflow: hidden; color: #c9dadd; font: 10px var(--mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
-.route-dock__set { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
-.route-dock__set button { min-height: 27px; padding: 5px; border: 1px solid var(--line-dim); background: rgb(114 189 199 / .035); color: #8fb3b8; font: 8px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
-.route-dock__set button:hover:not(:disabled) { color: var(--cyan-hi); background: rgb(114 189 199 / .1); border-color: var(--line-hi); }
-.route-dock__set button.active { color: var(--cyan-hi); background: rgb(114 189 199 / .12); border-color: var(--cyan); }
-.route-dock__set button:disabled { opacity: .32; cursor: not-allowed; }
-.route-dock .route-calculation { margin-top: 11px; padding-top: 11px; }
+/* Die Zeile liest sich wie die Route selbst: Start, Rechenart, Ziel. Die
+ * Endknoepfe zeigen, was gesetzt ist, und setzen auf Druck den offenen
+ * Koerper — steht er schon drin, loesen sie ihn wieder. */
+.route-dock__row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items: stretch; gap: 6px; }
+.route-dock__end { display: flex; min-height: 34px; padding: 4px 9px; flex-direction: column; justify-content: center; gap: 2px; border: 1px solid var(--line-dim); background: rgb(114 189 199 / .035); text-align: left; }
+.route-dock__end small { color: var(--muted); font: 7px var(--mono); letter-spacing: .14em; }
+.route-dock__end strong { overflow: hidden; color: #a9c3c7; font: 9px var(--mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+.route-dock__end:hover:not(:disabled) { border-color: var(--line-hi); background: rgb(114 189 199 / .1); }
+.route-dock__end:hover:not(:disabled) strong { color: var(--cyan-hi); }
+.route-dock__end.active { border-color: var(--cyan); background: rgb(114 189 199 / .12); }
+.route-dock__end.active strong { color: var(--cyan-hi); }
+.route-dock__end:disabled { opacity: .32; cursor: not-allowed; }
+.route-dock__calc { align-self: center; padding: 6px 14px 6px 7px; color: #aac4c7; background: #18272e; border: 1px solid var(--line-dim); outline: 0; font: 600 9px var(--mono); letter-spacing: .06em; }
+.route-dock__calc:hover { border-color: var(--line-hi); }
+.route-dock__calc:focus { border-color: var(--cyan); }
+.route-dock__clear { align-self: center; width: 22px; height: 22px; padding: 0; border: 1px solid #754c47; background: rgb(215 102 87 / .05); color: #c8776d; font: 13px/1 var(--mono); }
+.route-dock__clear:hover { border-color: #a9675f; background: rgb(215 102 87 / .12); color: #ef9b90; }
 .route-dock .route-distance, .route-dock .route-plan { margin-top: 12px; }
 .route-dock .route-unavailable { margin-top: 10px; }
 .config-btn { padding: 3px 7px; border: 1px solid var(--line-dim); background: transparent; color: #8fb3b8; font: 12px/1 var(--mono); }
@@ -409,14 +415,6 @@ button { cursor: pointer; }
 .route-distance { display: flex; margin-top: 18px; padding: 14px 16px; align-items: center; justify-content: space-between; border: 1px solid rgb(114 189 199 / .38); background: rgb(114 189 199 / .08); }
 .route-distance span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
 .route-distance strong { color: var(--cyan-hi); font: 700 18px var(--mono); letter-spacing: .05em; }
-.route-calculation { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; border-top: 1px solid var(--line-dim); }
-.route-calculation > span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
-.route-calculation > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.route-calculation button { min-height: 26px; padding: 4px 8px; border: 1px solid var(--line-dim); background: transparent; }
-.route-calculation button strong { color: #9aafb2; font: 8px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
-.route-calculation button:hover { border-color: var(--line-hi); background: rgb(114 189 199 / .06); }
-.route-calculation button.active { border-color: var(--cyan); background: rgb(114 189 199 / .09); }
-.route-calculation button.active strong { color: var(--cyan-hi); }
 .route-plan { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; border: 1px solid rgb(114 189 199 / .38); background: rgb(114 189 199 / .08); }
 .route-plan > span { padding: 11px 9px; border-right: 1px solid var(--line-dim); }
 .route-plan > span:last-child { border-right: 0; }

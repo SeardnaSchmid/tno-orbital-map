@@ -279,17 +279,18 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
         <template v-if="dossierOpen"><template v-if="activeBody.kind !== 'belt'"><dt>Große Halbachse</dt><dd>{{ distanceLabel(activeBody.semi_major_axis_au) }}</dd><dt>Exzentrizität</dt><dd>{{ activeBody.eccentricity.toLocaleString('de-DE') }}</dd><dt>Umlaufzeit</dt><dd>{{ activeBody.orbital_period_days ? `${activeBody.orbital_period_days.toLocaleString('de-DE')} T` : 'statisch' }}</dd></template><template v-for="stat in activeStats" :key="`${stat.label}-${stat.value}`"><dt>{{ stat.label }}</dt><dd>{{ stat.value }}</dd></template></template>
       </dl>
       <section v-if="!playerMode" class="route-dock">
-        <div class="route-dock__head"><span>ROUTE</span><strong>{{ routeSource ? bodyDisplayName(view, routeSource) : '—' }} → {{ routeDestination ? bodyDisplayName(view, routeDestination) : '—' }}</strong><button v-if="routeSource || routeDestination" class="route-reset" aria-label="Route zurücksetzen" @click="clearRoute">Zurücksetzen</button></div>
-        <div class="route-dock__set">
-          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeSource?.id }" :title="activeBody.id === routeSource?.id ? 'Diesen Körper als Routenstart lösen' : 'Diesen Körper als Routenstart setzen'" @click="activeBody.id === routeSource?.id ? clearRouteBody('source') : setRouteBody('source', activeBody.id)">{{ activeBody.id === routeSource?.id ? 'Start lösen' : 'Als Start' }}</button>
-          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeDestination?.id }" :title="activeBody.id === routeDestination?.id ? 'Diesen Körper als Routenziel lösen' : 'Diesen Körper als Routenziel setzen'" @click="activeBody.id === routeDestination?.id ? clearRouteBody('destination') : setRouteBody('destination', activeBody.id)">{{ activeBody.id === routeDestination?.id ? 'Ziel lösen' : 'Als Ziel' }}</button>
-        </div>
-        <div class="route-calculation">
-          <span>BERECHNUNG</span>
-          <div>
-            <button :class="{ active: activeRoute?.calculation === 'direct' }" :aria-pressed="activeRoute?.calculation === 'direct'" title="Gerade Entfernung zum eingestellten Datum" @click="updateRoute({ calculation: 'direct' })"><strong>Direkt</strong></button>
-            <button :class="{ active: activeRoute?.calculation === 'hohmann' }" :aria-pressed="activeRoute?.calculation === 'hohmann'" title="Treibstoffeffizienter Zweimpuls-Transfer" @click="updateRoute({ calculation: 'hohmann' })"><strong>Hohmann</strong></button>
-          </div>
+        <div class="route-dock__row">
+          <button class="route-dock__end" :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeSource?.id }" :title="activeBody.id === routeSource?.id ? `${activeInfo.name} als Routenstart lösen` : `${activeInfo.name} als Routenstart setzen`" @click="activeBody.id === routeSource?.id ? clearRouteBody('source') : setRouteBody('source', activeBody.id)">
+            <small>START</small><strong>{{ routeSource ? bodyDisplayName(view, routeSource) : 'nicht gesetzt' }}</strong>
+          </button>
+          <select class="route-dock__calc" aria-label="Berechnungsart" :value="activeRoute?.calculation" @change="updateRoute({ calculation: $event.currentTarget.value })">
+            <option value="direct" title="Gerade Entfernung zum eingestellten Datum">Direkt</option>
+            <option value="hohmann" title="Treibstoffeffizienter Zweimpuls-Transfer">Hohmann</option>
+          </select>
+          <button class="route-dock__end" :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeDestination?.id }" :title="activeBody.id === routeDestination?.id ? `${activeInfo.name} als Routenziel lösen` : `${activeInfo.name} als Routenziel setzen`" @click="activeBody.id === routeDestination?.id ? clearRouteBody('destination') : setRouteBody('destination', activeBody.id)">
+            <small>ZIEL</small><strong>{{ routeDestination ? bodyDisplayName(view, routeDestination) : 'nicht gesetzt' }}</strong>
+          </button>
+          <button v-if="routeSource || routeDestination" class="route-dock__clear" aria-label="Route zurücksetzen" title="Route zurücksetzen" @click="clearRoute">×</button>
         </div>
         <div v-if="activeRoute?.calculation === 'direct' && routeDistance !== null" class="route-distance"><span>DIREKTE DISTANZ</span><strong>{{ auDistanceLabel(routeDistance) }}</strong></div>
         <div v-else-if="activeRoute?.calculation === 'hohmann' && routeTransfer" class="route-plan">
