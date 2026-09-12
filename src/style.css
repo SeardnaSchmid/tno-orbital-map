@@ -194,7 +194,7 @@ button { cursor: pointer; }
 /* Position, Breite, Hoehe und Abstand kommen aus OrbitalMap.vue: dieselben
  * Konstanten legen die Leitungen, und zwei Quellen wuerden auseinanderlaufen. */
 .mission-objectives { position: absolute; z-index: 5; display: flex; flex-direction: column; }
-.mission-objective { position: relative; width: 100%; height: var(--mission-card-height); overflow: hidden; padding: 12px 14px 11px; pointer-events: none; border: 1px solid var(--mission-color, rgb(211 161 74 / .52)); border-left: 3px solid var(--mission-color, var(--amber)); outline: 0; background: linear-gradient(135deg, rgb(255 255 255 / .035), transparent 60%), rgb(20 32 38 / .95); box-shadow: 0 12px 28px rgb(0 0 0 / .24); opacity: .78; }
+.mission-objective { position: relative; width: 100%; overflow: hidden; padding: 12px 14px 11px; pointer-events: none; border: 1px solid var(--mission-color, rgb(211 161 74 / .52)); border-left: 3px solid var(--mission-color, var(--amber)); outline: 0; background: linear-gradient(135deg, rgb(255 255 255 / .035), transparent 60%), rgb(20 32 38 / .95); box-shadow: 0 12px 28px rgb(0 0 0 / .24); opacity: .78; }
 .mission-objective.active { box-shadow: 0 16px 38px rgb(0 0 0 / .36), inset 0 0 24px color-mix(in srgb, var(--mission-color) 6%, transparent); opacity: 1; }
 .mission-objective.editable { pointer-events: auto; cursor: pointer; transition: border-color .12s, background-color .12s; }
 .mission-objective.editable:hover, .mission-objective.editable:focus-visible { background-color: #1a292e; opacity: 1; }
@@ -202,6 +202,9 @@ button { cursor: pointer; }
 .mission-objective > header span { color: var(--mission-color, var(--amber)); font: 8px var(--mono); letter-spacing: .16em; }
 .mission-objective > header small { color: #87979a; font: 8px var(--mono); letter-spacing: .1em; }
 .mission-objective p { display: -webkit-box; height: 38px; margin: 7px 0 0; overflow: hidden; color: #d8e1e2; font: 13px/1.4 Arial, sans-serif; white-space: pre-line; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.mission-objective:not(.active) { padding: 10px 14px 9px; }
+.mission-objective:not(.active) p { height: 19px; margin-top: 5px; font-size: 12px; -webkit-line-clamp: 1; }
+.mission-objective:not(.active) > footer { margin-top: 4px; padding-top: 5px; }
 .mission-objective > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 5px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--mission-color, var(--amber)) 30%, transparent); }
 .mission-objective > footer span { min-width: 0; overflow: hidden; color: #9e9177; font: 8px var(--mono); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
 .mission-objective > footer strong { flex: 0 0 auto; color: var(--mission-color, var(--amber-hi)); font: 8px var(--mono); letter-spacing: .08em; }
@@ -340,16 +343,16 @@ button { cursor: pointer; }
 
 /* Die Route wird am Koerper gestellt statt in einem eigenen Fenster: wer sie
  * setzt, schaut ohnehin auf das Dossier des Koerpers, den er meint. */
-.route-dock { padding: 12px 18px 14px; border-top: 1px solid var(--line-dim); background: rgb(114 189 199 / .025); }
+.route-dock { padding: 11px 18px 12px; border-top: 1px solid var(--line-dim); background: rgb(114 189 199 / .025); }
 .route-dock__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .route-dock__head > span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
 .route-dock__head > strong { overflow: hidden; color: #c9dadd; font: 10px var(--mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
-.route-dock__set { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
-.route-dock__set button { min-height: 32px; padding: 6px; border: 1px solid var(--line-dim); background: rgb(114 189 199 / .035); color: #8fb3b8; font: 8px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.route-dock__set { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
+.route-dock__set button { min-height: 27px; padding: 5px; border: 1px solid var(--line-dim); background: rgb(114 189 199 / .035); color: #8fb3b8; font: 8px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .route-dock__set button:hover:not(:disabled) { color: var(--cyan-hi); background: rgb(114 189 199 / .1); border-color: var(--line-hi); }
 .route-dock__set button.active { color: var(--cyan-hi); background: rgb(114 189 199 / .12); border-color: var(--cyan); }
 .route-dock__set button:disabled { opacity: .32; cursor: not-allowed; }
-.route-dock .route-calculation { margin-top: 12px; padding-top: 11px; }
+.route-dock .route-calculation { margin-top: 11px; padding-top: 11px; }
 .route-dock .route-distance, .route-dock .route-plan { margin-top: 12px; }
 .route-dock .route-unavailable { margin-top: 10px; }
 .config-btn { padding: 3px 7px; border: 1px solid var(--line-dim); background: transparent; color: #8fb3b8; font: 12px/1 var(--mono); }
@@ -405,15 +408,14 @@ button { cursor: pointer; }
 .route-distance { display: flex; margin-top: 18px; padding: 14px 16px; align-items: center; justify-content: space-between; border: 1px solid rgb(114 189 199 / .38); background: rgb(114 189 199 / .08); }
 .route-distance span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
 .route-distance strong { color: var(--cyan-hi); font: 700 18px var(--mono); letter-spacing: .05em; }
-.route-calculation { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-dim); }
+.route-calculation { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; border-top: 1px solid var(--line-dim); }
 .route-calculation > span { color: var(--muted); font: 8px var(--mono); letter-spacing: .12em; }
-.route-calculation > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
-.route-calculation button { display: flex; padding: 10px 11px; flex-direction: column; gap: 3px; border: 1px solid var(--line-dim); background: transparent; text-align: left; }
-.route-calculation button strong { color: #9aafb2; font: 9px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
-.route-calculation button small { color: #607a7f; font: 8px var(--mono); }
+.route-calculation > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.route-calculation button { min-height: 26px; padding: 4px 8px; border: 1px solid var(--line-dim); background: transparent; }
+.route-calculation button strong { color: #9aafb2; font: 8px var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+.route-calculation button:hover { border-color: var(--line-hi); background: rgb(114 189 199 / .06); }
 .route-calculation button.active { border-color: var(--cyan); background: rgb(114 189 199 / .09); }
 .route-calculation button.active strong { color: var(--cyan-hi); }
-.route-calculation button.active small { color: #8ca9ad; }
 .route-plan { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; border: 1px solid rgb(114 189 199 / .38); background: rgb(114 189 199 / .08); }
 .route-plan > span { padding: 11px 9px; border-right: 1px solid var(--line-dim); }
 .route-plan > span:last-child { border-right: 0; }

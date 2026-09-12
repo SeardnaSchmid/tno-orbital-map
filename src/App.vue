@@ -139,7 +139,7 @@ function closeMenus() {
   showData.value = false;
 }
 function toggleMenu(name) {
-  const menu = { picker: showPicker, views: showViews, missions: showMissions, data: showData }[name];
+  const menu = { picker: showPicker, views: showViews, data: showData }[name];
   const next = !menu.value;
   closeMenus();
   menu.value = next;
@@ -235,8 +235,6 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
       <div v-if="!playerMode" class="hud-tools">
         <button class="btn" :aria-expanded="showPicker" @click="toggleMenu('picker')">Anzeige</button>
         <button class="btn" :aria-expanded="showViews" @click="toggleMenu('views')">Szenen</button>
-        <button class="btn" :aria-expanded="showMissions" @click="toggleMenu('missions')">Missionen</button>
-        <button class="btn" @click="startEditing">Dossier</button>
         <button v-if="embeddedMode === 'gm'" class="btn primary" @click="freezeForPlayers">Spieler einfrieren</button>
         <button class="data-trigger" :aria-expanded="showData" aria-label="Datenverwaltung" @click="toggleMenu('data')">•••</button>
       </div>
@@ -283,14 +281,14 @@ const kindLabel = (kind) => ({ star: "Stern", planet: "Planet", dwarf_planet: "Z
       <section v-if="!playerMode" class="route-dock">
         <div class="route-dock__head"><span>ROUTE</span><strong>{{ routeSource ? bodyDisplayName(view, routeSource) : '—' }} → {{ routeDestination ? bodyDisplayName(view, routeDestination) : '—' }}</strong><button v-if="routeSource || routeDestination" class="route-reset" aria-label="Route zurücksetzen" @click="clearRoute">Zurücksetzen</button></div>
         <div class="route-dock__set">
-          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeSource?.id }" @click="activeBody.id === routeSource?.id ? clearRouteBody('source') : setRouteBody('source', activeBody.id)">{{ activeBody.id === routeSource?.id ? 'Start lösen' : 'Als Routenstart' }}</button>
-          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeDestination?.id }" @click="activeBody.id === routeDestination?.id ? clearRouteBody('destination') : setRouteBody('destination', activeBody.id)">{{ activeBody.id === routeDestination?.id ? 'Ziel lösen' : 'Als Routenziel' }}</button>
+          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeSource?.id }" :title="activeBody.id === routeSource?.id ? 'Diesen Körper als Routenstart lösen' : 'Diesen Körper als Routenstart setzen'" @click="activeBody.id === routeSource?.id ? clearRouteBody('source') : setRouteBody('source', activeBody.id)">{{ activeBody.id === routeSource?.id ? 'Start lösen' : 'Als Start' }}</button>
+          <button :disabled="activeBody.kind === 'belt'" :class="{ active: activeBody.id === routeDestination?.id }" :title="activeBody.id === routeDestination?.id ? 'Diesen Körper als Routenziel lösen' : 'Diesen Körper als Routenziel setzen'" @click="activeBody.id === routeDestination?.id ? clearRouteBody('destination') : setRouteBody('destination', activeBody.id)">{{ activeBody.id === routeDestination?.id ? 'Ziel lösen' : 'Als Ziel' }}</button>
         </div>
         <div class="route-calculation">
           <span>BERECHNUNG</span>
           <div>
-            <button :class="{ active: activeRoute?.calculation === 'direct' }" :aria-pressed="activeRoute?.calculation === 'direct'" @click="updateRoute({ calculation: 'direct' })"><strong>Direkt</strong><small>Gerade Entfernung jetzt</small></button>
-            <button :class="{ active: activeRoute?.calculation === 'hohmann' }" :aria-pressed="activeRoute?.calculation === 'hohmann'" @click="updateRoute({ calculation: 'hohmann' })"><strong>Hohmann</strong><small>Effizienter Transfer</small></button>
+            <button :class="{ active: activeRoute?.calculation === 'direct' }" :aria-pressed="activeRoute?.calculation === 'direct'" title="Gerade Entfernung zum eingestellten Datum" @click="updateRoute({ calculation: 'direct' })"><strong>Direkt</strong></button>
+            <button :class="{ active: activeRoute?.calculation === 'hohmann' }" :aria-pressed="activeRoute?.calculation === 'hohmann'" title="Treibstoffeffizienter Zweimpuls-Transfer" @click="updateRoute({ calculation: 'hohmann' })"><strong>Hohmann</strong></button>
           </div>
         </div>
         <div v-if="activeRoute?.calculation === 'direct' && routeDistance !== null" class="route-distance"><span>DIREKTE DISTANZ</span><strong>{{ auDistanceLabel(routeDistance) }}</strong></div>

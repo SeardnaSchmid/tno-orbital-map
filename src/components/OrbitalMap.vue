@@ -27,7 +27,11 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
  * bekommt seine Masse als Inline-Style aus denselben Konstanten — sonst driften
  * CSS und Linienfuehrung auseinander und die Leitungen haengen neben ihren
  * Karten, ohne dass eine Pruefung das meldet. */
-const MISSION_CARD_TOP = 58, MISSION_CARD_HEIGHT = 112, MISSION_CARD_GAP = 8, MISSION_CARD_RIGHT = 18;
+/* Nur die offene Mission braucht ihre volle Hoehe. Die anderen sind Verweise,
+ * keine Arbeitsflaeche — als halbe Karten geben sie der Karte ihren Platz
+ * zurueck und sagen trotzdem, worum es geht. */
+const MISSION_CARD_TOP = 58, MISSION_CARD_HEIGHT = 112, MISSION_CARD_HEIGHT_IDLE = 74;
+const MISSION_CARD_GAP = 8, MISSION_CARD_RIGHT = 18;
 const MISSION_CARD_WIDTH_GM = 390, MISSION_CARD_WIDTH_PLAYER = 450;
 
 /* Eine Anschlussleitung, keine Kurve. Auf dieser Karte bedeutet eine Kurve
@@ -54,7 +58,14 @@ const solved = computed(() => positionsFor(view.value?.bodies ?? [], view.value?
 const activeMissionIndex = computed(() => (view.value?.missions ?? []).findIndex((mission) => mission.id === activeMission.value?.id));
 const missionWindow = computed(() => {
   const missions = view.value?.missions ?? [];
-  return missions.slice(0, 3).map((mission, slot) => ({ mission, number: slot + 1, slot }));
+  let top = MISSION_CARD_TOP;
+  return missions.slice(0, 3).map((mission, slot) => {
+    const active = mission.id === activeMission.value?.id;
+    const height = active ? MISSION_CARD_HEIGHT : MISSION_CARD_HEIGHT_IDLE;
+    const entry = { mission, number: slot + 1, slot, active, height, top };
+    top += height + MISSION_CARD_GAP;
+    return entry;
+  });
 });
 const contextIdsInSector = computed(() => {
   const missionIds = missionWindow.value.flatMap(({ mission }) => mission.target_ids);
@@ -207,21 +218,20 @@ const bodies = computed(() => (view.value?.bodies ?? []).filter((body) => body.k
 }));
 const routeSourceMarker = computed(() => bodies.value.find((body) => body.id === activeRoute.value?.source_body_id) ?? null);
 const routeDestinationMarker = computed(() => bodies.value.find((body) => body.id === activeRoute.value?.destination_body_id) ?? null);
-const missionTargetMarkers = computed(() => missionWindow.value.flatMap(({ mission, number, slot }) => mission.target_ids.map((id, index) => {
+const missionTargetMarkers = computed(() => missionWindow.value.flatMap(({ mission, number, slot, top, height }) => mission.target_ids.map((id, index) => {
   const body = bodies.value.find((item) => item.id === id);
   if (!body) return null;
   /* Die Leitung laeuft immer von den Karten heran. Die Zielmarke setzt sich
    * darum auf die abgewandte Seite des Markers — sonst kreuzt die Schraege
    * ihre eigene Beschriftung, und beide werden unlesbar. */
   const labelSide = body.x < missionCardLeft.value ? -1 : 1;
-  return { ...body, missionId: mission.id, missionNumber: number, slot, targetNumber: index + 1, labelSide };
+  return { ...body, missionId: mission.id, missionNumber: number, slot, targetNumber: index + 1, labelSide, cardTop: top, cardHeight: height };
 })).filter(Boolean));
 const missionCardWidth = computed(() => props.interactive ? MISSION_CARD_WIDTH_GM : MISSION_CARD_WIDTH_PLAYER);
 const missionCardLeft = computed(() => W - MISSION_CARD_RIGHT - missionCardWidth.value);
 const missionCardStyle = computed(() => ({
   top: `${MISSION_CARD_TOP}px`, right: `${MISSION_CARD_RIGHT}px`,
-  width: `${missionCardWidth.value}px`, gap: `${MISSION_CARD_GAP}px`,
-  "--mission-card-height": `${MISSION_CARD_HEIGHT}px`
+  width: `${missionCardWidth.value}px`, gap: `${MISSION_CARD_GAP}px`
 }));
 
 /* Gefast wird jeder echte Richtungswechsel, nicht nur der rechte Winkel:
@@ -265,8 +275,8 @@ const missionLinks = computed(() => {
      * sonst laegen ihre Stummel uebereinander. Der Faecher bleibt im Blech
      * der Karte. */
     const siblings = perMission.get(target.missionId);
-    const spread = Math.min(MISSION_ANCHOR_GAP, (MISSION_CARD_HEIGHT - 28) / Math.max(1, siblings.length - 1));
-    const cardY = MISSION_CARD_TOP + target.slot * (MISSION_CARD_HEIGHT + MISSION_CARD_GAP) + MISSION_CARD_HEIGHT / 2;
+    const spread = Math.min(MISSION_ANCHOR_GAP, (target.cardHeight - 24) / Math.max(1, siblings.length - 1));
+    const cardY = target.cardTop + target.cardHeight / 2;
     const anchorY = cardY + (siblings.indexOf(target) - (siblings.length - 1) / 2) * spread;
     const step = target.x < left ? -1 : 1;
     const endX = target.x - step * MISSION_RIM;
@@ -516,12 +526,12 @@ function stopPan(event) {
     <div class="map-meta map-meta--right"><span>GRID {{ distanceLabel(gridStep) }}</span><strong>{{ scaleLabel }} PX/AE</strong></div>
     <div v-if="interactive" class="map-zoom"><button title="Herauszoomen (Rad, mit Umschalt schneller)" aria-label="Herauszoomen" :disabled="zoom <= MIN_ZOOM" @click="zoomBy(.5)">−</button><output :title="`Zoomfaktor auf den eingerahmten Ausschnitt`">{{ zoomLabel }}</output><button title="Hineinzoomen (Rad, mit Umschalt schneller)" aria-label="Hineinzoomen" :disabled="zoom >= zoomCeiling" @click="zoomBy(2)">+</button><button class="map-zoom__auto" :class="{ active: manualFrame }" :title="manualFrame ? 'Manuelle Ansicht lösen und automatisch einpassen' : 'Ansicht automatisch einpassen'" @click="resetViewport">Auto</button></div>
     <div class="mission-objectives" :style="missionCardStyle">
-      <aside v-for="entry in missionWindow" :key="entry.mission.id" class="mission-objective" :class="{ editable: interactive, active: entry.mission.id === activeMission?.id }" :style="{ '--mission-color': MISSION_COLORS[entry.slot] }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" :aria-label="`Mission ${entry.number} bearbeiten`" @click="openMission(entry.mission)" @keydown.enter="openMission(entry.mission)">
+      <aside v-for="entry in missionWindow" :key="entry.mission.id" class="mission-objective" :class="{ editable: interactive, active: entry.mission.id === activeMission?.id }" :style="{ '--mission-color': MISSION_COLORS[entry.slot], height: `${entry.height}px` }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" :aria-label="`Mission ${entry.number} bearbeiten`" @click="openMission(entry.mission)" @keydown.enter="openMission(entry.mission)">
         <header><span>{{ entry.mission.id === activeMission?.id ? 'AKTIVE MISSION' : `MISSION ${entry.number}` }}</span><small>{{ entry.number }} / {{ view.missions.length }}</small></header>
         <p>{{ entry.mission.objective || 'Noch keine Aufgabe eingetragen.' }}</p>
         <footer><span>{{ missionTargetsLabel(entry.mission) }}</span><strong>{{ entry.mission.target_ids.length }} {{ entry.mission.target_ids.length === 1 ? 'ZIEL' : 'ZIELE' }}</strong></footer>
       </aside>
-      <aside v-if="!missionWindow.length" class="mission-objective mission-objective--empty" :class="{ editable: interactive }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" aria-label="Mission anlegen" @click="openMission(null)" @keydown.enter="openMission(null)">
+      <aside v-if="!missionWindow.length" class="mission-objective mission-objective--empty" :class="{ editable: interactive }" :style="{ height: `${MISSION_CARD_HEIGHT_IDLE}px` }" :role="interactive ? 'button' : undefined" :tabindex="interactive ? 0 : -1" aria-label="Mission anlegen" @click="openMission(null)" @keydown.enter="openMission(null)">
         <header><span>MISSIONEN</span><small>0 / 0</small></header>
         <p>Noch keine Mission angelegt.</p>
       </aside>
