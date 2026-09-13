@@ -1,6 +1,6 @@
 import { computed, reactive } from "vue";
 import { clone, forget, foundryMode, load, normalize, persist, publishSnapshot, uid } from "./storage.js";
-import { KERNAUSWAHL, SEKTOR_ZUGABE, SECTORS } from "./seed.js";
+import { KERNAUSWAHL, SEED, SEKTOR_ZUGABE, SECTORS } from "./seed.js";
 
 export const state = reactive({
   data: null, draft: null, activeBodyId: "sun", selectedIds: new Set(),
@@ -311,7 +311,15 @@ export function importDocument(doc) {
   adopt(doc, { persistDocument: true });
   announce("Import gespeichert");
 }
-export function reset() { forget(); adopt(SEED); announce("Vorgaben geladen"); }
+export async function reset() {
+  if (persistTimer) {
+    globalThis.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  await forget();
+  adopt(SEED);
+  announce(`${SEED.bodies.length} Körper aus den Vorgaben geladen`);
+}
 export function addBody() {
   if (!state.draft) openEditor("body");
   const body = {

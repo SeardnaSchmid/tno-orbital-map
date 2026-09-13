@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { forget, foundryMode, initialPublishedSnapshot, load, normalize, persist, publishSnapshot } from "./storage.js";
 import { bodyDisplayName, bodyPlayerLore, bodyPlayerStats, bodyPlayerTags } from "./presentation.js";
+import { BODIES } from "./seed.js";
 
 const bodies = [
   { id: "sun", name: "Sol", kind: "star", sector: "inneres-system", tags: ["Stern"] },
@@ -21,6 +22,34 @@ test("Kampagneninformationen erweitern geschuetzte Koerper", () => {
   assert.deepEqual(bodyPlayerStats(doc, earth)[0], { label: "Fraktion", value: "UN" });
   assert.ok(bodyPlayerStats(doc, earth).some((item) => item.label === "Durchmesser"));
   assert.equal(earth.semi_major_axis_au, 1);
+});
+
+test("ein gespeicherter Teilbestand wird wieder um den ganzen Katalog ergänzt", () => {
+  const doc = normalize({
+    version: 6,
+    bodies,
+    active_sector: "inneres-system",
+    body_overrides: { earth: { alias: "Terra", lore: "Nicht verlieren." } }
+  });
+  assert.equal(doc.bodies.length, BODIES.length);
+  assert.ok(doc.bodies.some((body) => body.id === "pluto"), "Pluto fehlt aus dem ergänzten Katalog");
+  assert.equal(doc.body_overrides.earth.alias, "Terra");
+  assert.equal(doc.body_overrides.earth.lore, "Nicht verlieren.");
+});
+
+test("ein leer gespeicherter Bestand lädt den vollständigen Katalog", () => {
+  const doc = normalize({ version: 6, bodies: [], active_sector: "inneres-system" });
+  assert.equal(doc.bodies.length, BODIES.length);
+});
+
+test("eigene Körper bleiben zusätzlich zum ergänzten Katalog erhalten", () => {
+  const station = {
+    id: "station", name: "Station", kind: "custom", is_custom: true,
+    sector: "inneres-system", parent_id: "earth", semi_major_axis_au: .0001
+  };
+  const doc = normalize({ version: 6, bodies: [bodies[0], station], active_sector: "inneres-system" });
+  assert.equal(doc.bodies.length, BODIES.length + 1);
+  assert.equal(doc.bodies.find((body) => body.id === "station")?.parent_id, "earth");
 });
 
 test("Wissenschaftliche Basisdaten und GM-Zeilen werden gemeinsam praesentiert", () => {
@@ -46,7 +75,7 @@ test("Eigene Koerper erhalten immer eine Beschreibung ihrer Darstellung", () => 
     active_sector: "inneres-system",
     bodies: [{ id: "station", name: "Station", kind: "custom", is_custom: true, sector: "inneres-system", color: "#d4841c" }]
   });
-  assert.equal(doc.bodies[0].color_note, "orange · vom GM festgelegt");
+  assert.equal(doc.bodies.find((body) => body.id === "station")?.color_note, "orange · vom GM festgelegt");
 });
 
 test("fehlende Gürtel werden ergänzt, bleiben aber aus Missionen heraus", () => {
@@ -229,7 +258,7 @@ test("die Foundry-Brücke liefert Arbeitsstand, Snapshot und Persistenz", async 
     assert.equal(load().campaign_date, "2029-02-03");
     assert.equal(initialPublishedSnapshot().campaign_date, "2030-01-01");
     persist({ campaign_date: "2031-04-05" });
-    forget();
+    await forget();
     await publishSnapshot({ campaign_date: "2032-06-07" });
     assert.deepEqual(calls, [["save", "2031-04-05"], ["clear"], ["publish", "2032-06-07"]]);
   } finally {

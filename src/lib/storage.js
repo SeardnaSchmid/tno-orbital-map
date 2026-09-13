@@ -89,7 +89,8 @@ function normalizeCamera(value, sector, ids) {
 export function normalize(source) {
   const doc = source && typeof source === "object" ? clone(source) : clone(SEED);
   const sourceVersion = number(doc.version, 1);
-  const legacyBodies = new Map((Array.isArray(doc.bodies) ? doc.bodies : []).map((body) => [String(body?.id), {
+  const storedBodies = Array.isArray(doc.bodies) ? doc.bodies : [];
+  const legacyBodies = new Map(storedBodies.map((body) => [String(body?.id), {
     lore: text(body?.lore), stats: stats(body?.stats)
   }]));
   const seedBodies = new Map(SEED.bodies.map((body) => [body.id, body]));
@@ -98,16 +99,19 @@ export function normalize(source) {
   doc.campaign_date = date(doc.campaign_date, SEED.campaign_date);
   doc.active_sector = SECTORS.some((sector) => sector.id === doc.active_sector)
     ? doc.active_sector : SEED.active_sector;
-  doc.bodies = Array.isArray(doc.bodies) ? doc.bodies : [];
-  /* Gürtel sind kuratierte Kartenobjekte und keine Kampagnendaten: sie müssen
-   * auch in einem längst gespeicherten Dokument auftauchen, und sie folgen dort
-   * dem Seed statt der eigenen Kopie — sonst hinge ein Gürtel für immer unter
-   * dem Stern, weil das Dokument eine alte Elternschaft konserviert hat. Andere
-   * fehlende Katalogkörper werden bewusst nicht ungefragt in eine
-   * Kampagnendatei gemischt. */
-  const seedBelts = SEED.bodies.filter((body) => body.kind === "belt");
-  const beltIds = new Set(seedBelts.map((belt) => belt.id));
-  doc.bodies = [...doc.bodies.filter((body) => !beltIds.has(String(body?.id))), ...seedBelts.map(clone)];
+  /* Der astronomische Katalog ist Anwendungsbestand, kein Kampagnenzustand.
+   * Ein alter LocalStorage-Stand oder Foundry-Snapshot darf ihn darum nicht
+   * auf seine damalige Teilmenge zusammenschneiden. Gespeicherte Exemplare
+   * behalten ihre Kampagnendaten; seitdem hinzugekommene Katalogkörper werden
+   * aus dem aktuellen Seed ergänzt. Eigene Körper bleiben zusätzlich erhalten.
+   * Gürtel folgen immer dem Seed, weil ihre Region und Elternschaft kuratiert
+   * sind und nicht im Körpereditor verändert werden können. */
+  const storedById = new Map(storedBodies.map((body) => [String(body?.id), body]));
+  const seedBeltIds = new Set(SEED.bodies.filter((body) => body.kind === "belt").map((body) => body.id));
+  doc.bodies = [
+    ...SEED.bodies.map((seed) => seedBeltIds.has(seed.id) ? clone(seed) : clone(storedById.get(seed.id) ?? seed)),
+    ...storedBodies.filter((body) => !seedBodies.has(String(body?.id))).map(clone)
+  ];
   const ids = new Set();
   doc.bodies = doc.bodies.map((body, index) => {
     const id = String(body?.id || `body-${index}`);
@@ -211,10 +215,10 @@ export function persist(doc) {
   }
   localStorage.setItem(KEY, JSON.stringify(doc));
 }
-export function forget() {
+export async function forget() {
   const foundry = bridge();
   if (foundry) {
-    void foundry.storage.clear().catch((error) => console.error("Navigationstisch: Foundry-Arbeitsstand konnte nicht gelöscht werden.", error));
+    await foundry.storage.clear();
     return;
   }
   localStorage.removeItem(KEY);

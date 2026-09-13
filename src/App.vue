@@ -216,7 +216,14 @@ function requestReset() {
     message: "Der lokal gespeicherte Kampagnenstand wird gelöscht. Exportiere ihn vorher, wenn du ihn behalten möchtest.",
     confirmLabel: "Zurücksetzen",
     tone: "danger",
-    onConfirm: () => { reset(); closeMenus(); }
+    onConfirm: async () => {
+      closeMenus();
+      try { await reset(); }
+      catch (error) {
+        state.status = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+        state.statusTone = "error";
+      }
+    }
   });
 }
 function recordFocus(record) {
